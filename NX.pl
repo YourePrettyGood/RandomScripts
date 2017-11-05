@@ -5,6 +5,7 @@ use strict;
 use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
+use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
 =pod
 
@@ -88,6 +89,8 @@ if ( scalar@ARGV > 0) { #Retrieve contig file path from command line argument li
 my $contigfile;
 if ($input_filepath eq '-') {
    open $contigfile, "<&", \*STDIN or die "Failed to duplicate STDIN file handle for input FASTA due to error $!\n";
+} elsif ($input_filepath =~ /\.gz$/) {
+   $contigfile = new IO::Uncompress::Gunzip $input_filepath or die "Failed to open input gzipped FASTA file due to error ${GunzipError}\n";
 } else {
    open $contigfile, "<", $input_filepath or die "Failed to open input FASTA file due to error $!\n";
 }
@@ -134,12 +137,14 @@ my $Xstr = $customsum > 0 ? "G" . $X : $X;
 $customsum = $customsum > 0 ? $customsum : $contiglensum;
 print STDERR "Now calculating N", $Xstr, " value\n" if $debug;
 my $curlen = 0;
+my $curctg = 0; #For LX
 OUTERLOOP: for (my $l = 0; $l < $arrlen; $l++) {
    for (my $m = 0; $m < $contiglens{$sortedcontiglens[$l]}; $m++) {
+      $curctg++;
       $curlen = $curlen + $sortedcontiglens[$l];
       if ($curlen >= ($customsum * $X / 100)) {
          print "N", $Xstr, ": ", $sortedcontiglens[$l], "\n";
-         print "L", $Xstr, ": ", $l+1, "\n";
+         print "L", $Xstr, ": ", $curctg, "\n";
          last OUTERLOOP;
       }
    }
