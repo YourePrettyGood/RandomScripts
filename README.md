@@ -37,19 +37,27 @@ You can pass `-` as the FASTA file path, and the script will read the FASTA from
 Also, interestingly, with some upstream fiddling to get reads into FASTA format, you can calculate the NRX statistics (like NR25 and NR40) with this script, although it's fairly slow for large numbers of reads.  We're limited by Perl's sort routine's time complexity, unfortunately.
 
 Example usage:
+
 Calculate N50, L50, and other stats for Drosophila melanogaster FlyBase release 6.13 assembly:
+
 `NX.pl dmel-all-chromosome-r6.13.fasta`
 
 Calculate N90, L90, etc. for the same assembly:
+
 `NX.pl dmel-all-chromosome-r6.13.fasta 90`
 
 Calculate the NG50, LG50, etc., assuming G=130,000,000 bp:
+
 `NX.pl dmel-all-chromosome-r6.13.fasta 50 130000000`
 
 Calculate N50 on a gzipped assembly (e.g. from 10x Genomics' Supernova mkoutput):
+
 `gzip -dc MySupernovaAsm.fa.gz | NX.pl -`
+
 or
+
 `NX.pl MySupernovaAsm.fa.gz`
+
 though piping seems to be faster in many cases.
 
 ### `manualScaffold.pl`
@@ -196,6 +204,7 @@ It's essentially just two columns:
 2. Count of index reads matching the sequence in column 1
 
 Example usage:
+
 `ReadHistogram.sh MySequencingLane_I1.fastq.gz > MySequencingLane_i7_index_histogram.tsv`
 
 ### `labelIndexReadHistogram.pl`
@@ -205,11 +214,13 @@ This script is intended to be used in tandem with `ReadHistogram.sh` (and may be
 The output is a modified version of what comes from `ReadHistogram.sh` in that a variable number of columns is added, one per matching barcode from your barcodes file (with up to 2 mismatches).
 
 Example usage:
+
 `ReadHistogram.sh MySequencingLane_I1.fastq.gz | labelIndexReadHistogram.pl -b MySequencingLane_i7_indices.tsv > MySequencingLane_labeled_i7_histogram.tsv`
 
 You may want to save the read histogram to a file, and feed it to `labelIndexReadHistogram.pl` with the `-i` option, in case you need to diagnose barcode file problems without waiting a long time for each run of `ReadHistogram.sh`.
 
 **Note that your barcode file must be a proper TSV (i.e. columns separated by single `\t` characters, NOT spaces.  Many text editors have the annoying behaviour of inputting a certain number of spaces instead of a true tab character.  Using spaces will make the barcode parser output gibberish/fail, and will not produce any labels from this script.**
+
 An easy way to check for tabs in your barcode file is to run `hexdump -C < MySequencingLane_i7_indices.tsv` and examine the output for `09` characters.  The ASCII code for the tab character is 09 in hexadecimal (see [ASCII Table](http://asciitable.com/)
 
 ### `divideConquerParser.sh`
@@ -219,16 +230,21 @@ This bash script was a simple (read: rushed) attempt to parallelize the slow pro
 All that happens behind the scenes here is that we split the read files into `n` parts, run `n` parallel instances of the barcode parser `barcode_splitter.py`, and once all are done, we re-merge the split files appropriately, and delete intermediate files.
 
 Example usage:
+
 Use 8 cores for a single-indexed paired-end (so R1, R2, and I1 FASTQ files) dataset:
+
 `divideConquerParser.sh 3 "MyLane_R1.fastq.gz MyLane_R2.fastq.gz MyLane_I1.fastq.gz" 8 MyLane_i7_indices.tsv 3`
 
 Use 8 cores for single-indexed paired-end dataset, but changing the listing order of the files so the index read file is first:
+
 `divideConquerParser.sh 3 "MyLane_I1.fastq.gz MyLane_R1.fastq.gz MyLane_R2.fastq.gz" 8 MyLane_i7_indices.tsv 1`
 
 Use 8 cores for single-indexed single-end dataset, where index read file is last:
+
 `divideConquerParser.sh 2 "MyLane_R1.fastq.gz MyLane_I1.fastq.gz" 8 MyLane_i7_indices.tsv 2`
 
 Use 8 cores to perform the i5 parse of a dual-indexed paired-end dataset (where i5 is the *_I1.fastq.gz file, and i7 is the *_I2.fastq.gz file):
+
 `divideConquerParser.sh 4 "MyLane_R1.fastq.gz MyLane_R2.fastq.gz MyLane_I1.fastq.gz MyLane_I2.fastq.gz" 8 MyLane_i5_indices.tsv 3`
 
 **Note that the 5th (last) argument is the 1-based position of the index read file you want to parse on.  This number must be less than or equal to the total number of read files you would like to parse.
