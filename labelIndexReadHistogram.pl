@@ -67,6 +67,9 @@ while (my $line = <INDEXFILE>) {
    chomp $line;
    my ($id, $bc) = split /\t/, $line, 2;
    #Should do some case checking to make sure it's a valid barcode file in the future
+   die "No tabs present in barcode file, make sure your columns are separated by tabs!\n" unless defined($bc);
+   die "Too many columns in barcode file, expecting 2.\n" if $bc =~ /\t/;
+   die "Invalid barcode found, must be non-ambiguous nucleotides (ACGT only).\n" unless $bc =~ /^[ACGT]+$/;
    $FCmap{$bc} = $id;
 }
 close(INDEXFILE);
