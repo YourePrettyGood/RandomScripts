@@ -128,6 +128,18 @@ The idea here is similar to `extractRegions.pl`, but this script is the predeces
 
 This script takes in a BED file of intervals you find interesting, and a GFF of features.  It then extracts lines of the GFF that overlap your intervals, and outputs a modified set of GFF lines.  I used this as a preliminary way to screen for genes within tracts of IBD common between multiple white monarchs.
 
+### `constructCDSfromGFF3.pl`
+
+This script takes in a GFF3 file (e.g. genome annotation -- be very certain that it is GFF3 and not GFF2 or GTF), and a genome FASTA, and outputs all CDSes from the annotation as unwrapped FASTA.
+
+I've used this to prepare transcriptomes (minus UTRs) for differential expression analysis, and it does not suffer from the off-by-one error you get from bedtools getfasta.
+
+For instance, if you have the "GFF" output from the BRAKER1 pipeline, this is not actually GFF, but an oddly formatted GTF, so you can convert from GTF to GFF3 using the Augustus script `gtf2gff.pl` as follows:
+
+`gtf2gff.pl --printExon --printUTR --gff3 --out BRAKER_output_gtf2gff.gff3 < BRAKER_output.gff`
+
+`constructCDSesFromGFF3.pl -i BRAKER_genome.fasta -g BRAKER_output_gtf2gff.gff3 > BRAKER_output_gtf2gff_transcripts.fasta`
+
 ## Genome-wide statistics programs/scripts:
 
 **Note: All C++ programs will safely compile as long as your compiler supports C++11.  I usually compile with `g++ -O3 -g -Wall --std=c++11 -o [program prefix] [program prefix].cpp`.**
@@ -205,7 +217,7 @@ Pi is calculated as in calculateDxy.
 
 These are no longer exclusively for biallelic sites, but do reduce to the biallelic site formulae when i and j are constrained to 1 and 2.  Also, I haven't actually written out the proof yet, but I'm pretty sure that averaging the per-base values across a window is exactly equivalent to the Dxy and Pi you would calculate using Nei's formulae.
 
-Note that you have to omit the first line (a header) in order to pass the output to `nonOverlappingWindows`.  Also, if you want to take the windowed average of something other than D12, you'll need to pipe the output through a quick awk script:
+Note that you have to omit the first line (a header) in order to pass the output to `nonOverlappingWindows`, e.g. using `tail -n+2` or awk, as follows:
 
 `calculatePolymorphism [FASTA 1] [FASTA 2] [FASTA 3] [...] | awk 'NR>1' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
 
