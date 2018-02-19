@@ -2,8 +2,16 @@
  * calculateDxy.cpp                                                         *
  * Written by Patrick Reilly                                                *
  * Version 1.0 written 2017/01/29                                           *
+ * Version 2.1 written 2017/05/30 (added shared polymorphism and inbred)    *
  *                                                                          *
  * Description:                                                             *
+ * This script takes in pseudoreference FASTAs and a TSV describing which   *
+ *  pseudoreferences are from which population, and calculates Dxy, Pix,    *
+ *  Piy, Dnet, and optionally identifies shared polymorphisms between       *
+ *  populations.                                                            *
+ * When indicated, all pseudoreferences may be treated as inbred lines, and *
+ *  all samples are assumed haploid, where a single allele is chosen at     *
+ *  random for each heterozygous site.                                      *
  *                                                                          *
  * Syntax: calculateDxy [options] [list of pseudoreference FASTAs]          *
  ****************************************************************************/
@@ -11,6 +19,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdlib>
 #include <getopt.h>
 #include <cctype>
 #include <vector>
@@ -18,6 +27,7 @@
 #include <sstream>
 #include <array>
 #include <set>
+#include <unordered_map>
 
 //Define constants for getopt:
 #define no_argument 0
@@ -25,13 +35,13 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "1.0"
+#define VERSION "2.1"
 
 //Define number of bases:
 #define NUM_BASES 4
 
 //Usage/help:
-#define USAGE "calculateDxy\nUsage:\n calculateDxy [options] [list of pseudoreference FASTAs]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n"
+#define USAGE "calculateDxy\nUsage:\n calculateDxy [options] [list of pseudoreference FASTAs]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n -s,--shared_poly\tIdentify shared polymorphisms between populations\n -i,--inbred\tTreat pseudoreferences as inbred haploids\n -r,--prng_seed\tSet PRNG seed for random allele selection in inbred lines\n\t\tDefault: 42\n"
 
 using namespace std;
 
@@ -86,7 +96,35 @@ bool readFASTAs(vector<ifstream*> &input_FASTAs, vector<string> &FASTA_lines) {
    return ifstream_notfail;
 }
 
-void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, map<unsigned long, unsigned long> &population_map, unsigned long num_populations, bool debug) {
+string piKey(array<unsigned long, 6> &allele_counts) {
+   string pikey = "";
+   for (auto array_iterator = allele_counts.begin(); array_iterator != allele_counts.end(); ++array_iterator) {
+      pikey += to_string(*array_iterator) + ",";
+   }
+   return pikey; //We don't really care about the extra comma
+}
+
+string dxyKey(array<unsigned long, 6> &pop1_allele_counts, array<unsigned long, 6> &pop2_allele_counts) {
+   string dxykey = "";
+   for (auto pop1_iterator = pop1_allele_counts.begin(); pop1_iterator != pop1_allele_counts.end(); ++pop1_iterator) {
+      dxykey += to_string(*pop1_iterator) + ",";
+   }
+   for (auto pop2_iterator = pop2_allele_counts.begin(); pop2_iterator != pop2_allele_counts.end(); ++pop2_iterator) {
+      dxykey += to_string(*pop2_iterator) + ",";
+   }
+   return dxykey;
+}
+
+bool is_shared_poly(array<unsigned long, 6> &pop1_allele_counts, array<unsigned long, 6> &pop2_allele_counts) {
+   unsigned int shared_poly = 0;
+   //If any two alleles have non-zero product of frequencies across the two populations, the site is a shared polymorphism
+   for (unsigned int i = 0; i < NUM_BASES; i++) {
+      shared_poly += ((pop1_allele_counts[i] * pop2_allele_counts[i] > 0) ? 1 : 0);
+   }
+   return shared_poly > 1;
+}
+
+void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, map<unsigned long, unsigned long> &population_map, unsigned long num_populations, unordered_map<string, double> &memoized_pi, unordered_map<string, double> &memoized_dxy, bool shared_poly, bool inbred, bool debug) {
    cerr << "Processing scaffold " << FASTA_headers[0].substr(1) << " of length " << FASTA_sequences[0].length() << endl;
    //Do all the processing for this scaffold:
    //Polymorphism estimator: Given base frequencies at site:
@@ -105,6 +143,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
    vector<double> population_pi_hats; //Store population-specific un-corrected polymorphism estimates
    vector<double> D_xys; //Store population pair-specific D_{xy} estimates (absolute, not net divergence)
    vector<double> D_as; //Store population pair-specific D_{a} estimates (net divergence, not absolute)
+   vector<bool> SP; //Store population pair-specific indicator of shared polymorphism
    
    for (unsigned long i = 0; i < scaffold_length; i++) {
       //Use site if all populations have at least 2 alleles:
@@ -127,68 +166,92 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
          switch (FASTA_sequences[j][i]) {
             case 'A':
             case 'a':
-               population_site_frequencies[population_map[j]-1][0] += 2; //Add 2 A alleles
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               population_site_frequencies[population_map[j]-1][0] += inbred ? 1 : 2; //Add 2 A alleles
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'C':
             case 'c':
-               population_site_frequencies[population_map[j]-1][1] += 2; //Add 2 C alleles
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               population_site_frequencies[population_map[j]-1][1] += inbred ? 1 : 2; //Add 2 C alleles
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'G':
             case 'g':
-               population_site_frequencies[population_map[j]-1][2] += 2; //Add 2 G alleles
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               population_site_frequencies[population_map[j]-1][2] += inbred ? 1 : 2; //Add 2 G alleles
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'K': //G/T het site
             case 'k':
-               population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
-               population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 2 : 3]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
+                  population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'M': //A/C het site
             case 'm':
-               population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
-               population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 0 : 1]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
+                  population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'R': //A/G het site
             case 'r':
-               population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
-               population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 0 : 2]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
+                  population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'S': //C/G het site
             case 's':
-               population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
-               population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 1 : 2]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
+                  population_site_frequencies[population_map[j]-1][2]++; //Add 1 G allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'T':
             case 't':
-               population_site_frequencies[population_map[j]-1][3] += 2; //Add 2 T alleles
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               population_site_frequencies[population_map[j]-1][3] += inbred ? 1 : 2; //Add 2 T alleles
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'W': //A/T het site
             case 'w':
-               population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
-               population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 0 : 3]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][0]++; //Add 1 A allele
+                  population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'Y': //C/T het site
             case 'y':
-               population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
-               population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
-               population_site_frequencies[population_map[j]-1][5] += 2; //Add 2 non-N alleles
+               if (inbred) { //Randomly choose one of the alleles
+                  population_site_frequencies[population_map[j]-1][rand() <= (RAND_MAX-1)/2 ? 1 : 3]++;
+               } else {
+                  population_site_frequencies[population_map[j]-1][1]++; //Add 1 C allele
+                  population_site_frequencies[population_map[j]-1][3]++; //Add 1 T allele
+               }
+               population_site_frequencies[population_map[j]-1][5] += inbred ? 1 : 2; //Add 2 non-N alleles
                break;
             case 'N':
-               population_site_frequencies[population_map[j]-1][4] += 2; //Add 2 N alleles
+               population_site_frequencies[population_map[j]-1][4] += inbred ? 1 : 2; //Add 2 N alleles
                break;
             case '-':
-               population_site_frequencies[population_map[j]-1][4] += 2; //Add 2 N alleles
+               population_site_frequencies[population_map[j]-1][4] += inbred ? 1 : 2; //Add 2 N alleles
                break;
             default: //Assume that any case not handled here is an N
-               population_site_frequencies[population_map[j]-1][4] += 2; //Add 2 N alleles
+               population_site_frequencies[population_map[j]-1][4] += inbred ? 1 : 2; //Add 2 N alleles
                break;
          }
       }
@@ -198,58 +261,63 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
          cerr << "Estimating allele frequencies for site " << i+1 << "." << endl;
       }
       unsigned long population_index = 0;
-      for (auto population_iterator = population_site_frequencies.begin(); population_iterator != population_site_frequencies.end(); ++population_iterator) {
+      for (population_index = 0; population_index < num_populations; population_index++) {
+         use_site = use_site && population_site_frequencies[population_index][5] >= 2;
+         string pi_key = piKey(population_site_frequencies[population_index]);
          for (unsigned long j = 0; j < NUM_BASES; j++) {
-            population_p_hats[population_index][j] = (double)(*population_iterator)[j]/(double)(*population_iterator)[5];
+            population_p_hats[population_index][j] = (double)population_site_frequencies[population_index][j]/(double)population_site_frequencies[population_index][5];
          }
-         population_index++;
-         use_site = use_site && (*population_iterator)[5] >= 2;
-      }
-      
-      //Calculate \pi_{i} for each population:
-      if (debug) {
-         cerr << "Estimating pi for each population at site " << i+1 << "." << endl;
-      }
-      population_index = 0;
-      for (auto population_iterator = population_p_hats.begin(); population_iterator != population_p_hats.end(); ++population_iterator) {
-         for (unsigned long j = 0; j < NUM_BASES-1; j++) {
-            for (unsigned long k = j+1; k < NUM_BASES; k++) {
-               population_pi_hats[population_index] += 2*(*population_iterator)[j]*(*population_iterator)[k];
+         if (memoized_pi.find(pi_key) != memoized_pi.end()) {
+            population_pi_hats[population_index] = memoized_pi[pi_key];
+         } else {
+            //Calculate \pi_{i} for each population:
+            if (debug) {
+               cerr << "Estimating pi for each population at site " << i+1 << "." << endl;
             }
+            for (unsigned long j = 0; j < NUM_BASES-1; j++) {
+               for (unsigned long k = j+1; k < NUM_BASES; k++) {
+                  population_pi_hats[population_index] += 2*population_p_hats[population_index][j]*population_p_hats[population_index][k];
+               }
+            }
+            //Do the \frac{n}{n-1} correction, which now makes this Nei (1987) Eqn. 10.5
+            if (population_site_frequencies[population_index][5] >= 2) { //Avoid divide-by-zero
+               population_pi_hats[population_index] *= (double)population_site_frequencies[population_index][5]/(double)(population_site_frequencies[population_index][5]-1);
+            }
+            memoized_pi[pi_key] = population_pi_hats[population_index];
          }
-         //Do the \frac{n}{n-1} correction, which now makes this Nei (1987) Eqn. 10.5
-         if (population_site_frequencies[population_index][5] >= 2) { //Avoid divide-by-zero
-            population_pi_hats[population_index] *= (double)population_site_frequencies[population_index][5]/(double)(population_site_frequencies[population_index][5]-1);
-         }
-         population_index++;
       }
       
-      //Calculate D_{xy} and D_{a} for each pair of populations:
+      //Calculate D_{xy} and D_{a} for each pair of populations, and identify shared polymorphisms:
       if (debug) {
          cerr << "Estimating D_xy and D_a for site " << i+1 << "." << endl;
       }
-      population_index = 0;
-      unsigned long population2_index = 0;
-      for (auto population_iterator = population_p_hats.begin(); population_iterator != population_p_hats.end(); ++population_iterator) {
-         for (auto population2_iterator = population_p_hats.begin(); population2_iterator != population_p_hats.end(); ++population2_iterator) {
-            if (population_iterator >= population2_iterator) { //Make sure j > i
-               ++population2_index;
-               continue;
-            }
-            
-            double d_xy = 0.0;
-            for (unsigned long j = 0; j < NUM_BASES; j++) {
-               for (unsigned long k = 0; k < NUM_BASES; k++) {
-                  if (j != k) { //d_{ij} = 1 for i != j, see Nei (1987) Eqn. 10.20
-                     d_xy += (*population_iterator)[j]*(*population2_iterator)[k]; //\hat{x}_{i}\hat{y}_{j} in Nei (1987) Eqn. 10.20
+      for (population_index = 0; population_index < num_populations; population_index++) {
+         for (unsigned long population2_index = population_index+1; population2_index < num_populations; population2_index++) {
+            string dxy_key = dxyKey(population_site_frequencies[population_index], population_site_frequencies[population2_index]);
+            if (memoized_dxy.find(dxy_key) != memoized_dxy.end()) {
+               D_xys.push_back(memoized_dxy[dxy_key]);
+               double d_net = memoized_dxy[dxy_key] - ((population_pi_hats[population_index] + population_pi_hats[population2_index]) / (double)2.0);
+               D_as.push_back(d_net);
+            } else {
+               double d_xy = 0.0;
+               for (unsigned long j = 0; j < NUM_BASES; j++) {
+                  for (unsigned long k = 0; k < NUM_BASES; k++) {
+                     if (j != k) { //d_{ij} = 1 for i != j, see Nei (1987) Eqn. 10.20
+                        d_xy += population_p_hats[population_index][j]*population_p_hats[population2_index][k]; //\hat{x}_{i}\hat{y}_{j} in Nei (1987) Eqn. 10.20
+                     }
                   }
                }
+               D_xys.push_back(d_xy);
+               memoized_dxy[dxy_key] = d_xy;
+               double d_net = d_xy - ((population_pi_hats[population_index] + population_pi_hats[population2_index]) / (double)2.0);
+               D_as.push_back(d_net);
             }
-            D_xys.push_back(d_xy);
-            D_as.push_back(d_xy-(population_pi_hats[population_index]+population_pi_hats[population2_index])/2.0);
-            ++population2_index;
+            //Identify shared polymorphisms:
+            if (shared_poly) {
+               bool site_is_shared_poly = is_shared_poly(population_site_frequencies[population_index], population_site_frequencies[population2_index]);
+               SP.push_back(site_is_shared_poly);
+            }
          }
-         ++population_index;
       }
       
       if (use_site) {
@@ -269,6 +337,11 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
             cout << '\t' << D_xys[pair_index];
             cout << '\t' << D_as[pair_index];
          }
+         if (shared_poly) {
+            for (unsigned long pair_index = 0; pair_index < num_pairs; pair_index++) {
+               cout << '\t' << SP[pair_index];
+            }
+         }
          cout << endl;
       } else { //Do not output any estimators for n < 2
          cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "0" << '\t' << 1;
@@ -279,6 +352,13 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
             for (unsigned long k = j+1; k <= num_populations; k++) {
                cout << '\t' << "0"; //Output 0 (NA)s for D_{XY}
                cout << '\t' << "0"; //Output 0 (NA)s for D_{a}
+            }
+         }
+         if (shared_poly) {
+            for (unsigned long j = 1; j <= num_populations; j++) {
+               for (unsigned long k = j+1; k <= num_populations; k++) {
+                  cout << '\t' << "0"; //Output 0 (NA) for shared polymorphism between i and j
+               }
             }
          }
          cout << endl;
@@ -293,6 +373,13 @@ int main(int argc, char **argv) {
    
    //Path to file describing which indivs are in which populations:
    string popfile_path;
+   
+   //Option to identify polymorphisms shared between populations:
+   bool shared_poly = 0;
+   
+   //Handle inbred pseudoreferences as haploids:
+   bool inbred = 0;
+   unsigned int prng_seed = 42;
 
    //Option to output debugging info on STDERR
    bool debug = 0;
@@ -304,16 +391,31 @@ int main(int argc, char **argv) {
    //Create the struct used for getopt:
    const struct option longoptions[] {
       {"popfile", required_argument, 0, 'p'},
+      {"shared_poly", no_argument, 0, 's'},
+      {"inbred", no_argument, 0, 'i'},
+      {"prng_seed", required_argument, 0, 'r'},
       {"debug", no_argument, 0, 'd'},
       {"version", no_argument, 0, 'v'},
       {"help", no_argument, 0, 'h'}
    };
    //Read in the options:
-   while ((optchar = getopt_long(argc, argv, "p:dvh", longoptions, &structindex)) > -1) {
+   while ((optchar = getopt_long(argc, argv, "p:sir:dvh", longoptions, &structindex)) > -1) {
       switch(optchar) {
          case 'p':
             cerr << "Using population TSV file " << optarg << endl;
             popfile_path = optarg;
+            break;
+         case 's':
+            cerr << "Identifying shared polymorphic sites." << endl;
+            shared_poly = 1;
+            break;
+         case 'i':
+            cerr << "Assuming all pseudoreferences are haploid." << endl;
+            inbred = 1;
+            break;
+         case 'r':
+            cerr << "Setting PRNG seed to " << optarg << endl;
+            prng_seed = atoi(optarg);
             break;
          case 'd':
             cerr << "Outputting debug information." << endl;
@@ -338,6 +440,9 @@ int main(int argc, char **argv) {
    while (optind < argc) {
       input_FASTA_paths.push_back(argv[optind++]);
    }
+   
+   //Set the seed of the PRNG:
+   srand(prng_seed);
    
    //Open the population TSV file:
    ifstream pop_file;
@@ -383,6 +488,13 @@ int main(int argc, char **argv) {
          cout << '\t' << "Da_" << i << ',' << j;
       }
    }
+   if (shared_poly) {
+      for (unsigned long i = 1; i <= num_populations; i++) {
+         for (unsigned long j = i+1; j <= num_populations; j++) {
+            cout << '\t' << "Shared_Poly_" << i << ',' << j;
+         }
+      }
+   }
    cout << endl;
    
    //Open the input FASTAs:
@@ -397,6 +509,10 @@ int main(int argc, char **argv) {
    vector<string> FASTA_lines;
    FASTA_lines.reserve(input_FASTA_paths.size());
    
+   //Set up maps to memoize pi and Dxy:
+   unordered_map<string, double> memoized_pi;
+   unordered_map<string, double> memoized_dxy;
+
    //Iterate over all of the FASTAs synchronously:
    vector<string> FASTA_headers;
    vector<string> FASTA_sequences;
@@ -410,7 +526,7 @@ int main(int argc, char **argv) {
       }
       if (all_header_lines) {
          if (!FASTA_sequences.empty()) {
-            processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, debug);
+            processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug);
             FASTA_sequences.clear();
          }
          FASTA_headers = FASTA_lines;
@@ -451,7 +567,7 @@ int main(int argc, char **argv) {
       which_input_FASTA++;
    }
    //If no errors kicked us out of the while loop, process the last scaffold:
-   processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, debug);
+   processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug);
    
    //Close the input FASTAs:
    closeFASTAs(input_FASTAs);

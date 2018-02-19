@@ -34,11 +34,12 @@ chromosome-space using an AGP file that maps scaffolds to chromosomes.
 #Initialize the input parameters
 my $help = 0;
 my $man = 0;
+my $debug = 0;
 my $input_agp = "";
 my $input_gff = "";
 
 #Fetch the command line parameters
-GetOptions('help|h|?' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, man => \$man) or pod2usage(2);
+GetOptions('help|h|?' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, 'debug|d' => \$debug, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 pod2usage(-exitval => 2, -output => \*STDERR) if $input_agp eq "" or $input_gff eq "";
@@ -57,6 +58,7 @@ unless (-e $input_gff) {
 my %chromosomes = ();
 my %offsets = ();
 my %orientations = ();
+my %chrom_headers = ();
 
 #Read through the AGP and fill the aforementioned hashes:
 print STDERR "Reading AGP\n";
@@ -80,26 +82,44 @@ while (!eof(AGP)) {
    #Offset for negative orientation is the larger position, for positive is smaller:
    $offsets{$scaffold} = $scaf_orientation eq "-" ? $chrom_end : $chrom_start;
    $orientations{$scaffold} = $scaf_orientation;
+   $chrom_headers{$chrom} = join(" ", $chrom_start, $chrom_end);
 }
 close(AGP);
 print STDERR "Done reading AGP, found ", scalar(keys %chromosomes), " scaffolds\n";
 
 #Read through the GFF3, and modify the chromosome/scaffold, start, end, and
 # orientation fields according to the hashes derived from the AGP:
+my @gff_headers = ();
 print STDERR "Reading scaffold-based GFF3 and outputting chromosome-based GFF3\n";
 open(GFF, "<", $input_gff);
 while (!eof(GFF)) {
    my $line = <GFF>;
-   #Skip header lines:
-   if ($line =~ /^#/) {
-      print STDOUT $line;
+   #Accumulate headers
+   if ($line =~ /^##/) {
+      chomp $line;
+      push @gff_headers, $line unless $line =~ /sequence-region/;
+      if ($line =~ /sequence-region/) { #Keep if scaffold missing from AGP
+         my ($headertype, $scaffold, $scaf_start, $scaf_end) = split /\s+/, $line, 4;
+         push @gff_headers, $line unless exists($chromosomes{$scaffold});
+      }
       next;
+   }
+   #Add the revised sequence-region headers once we're onto the records:
+   if ($line !~ /^##/ and scalar@gff_headers > 0) {
+      #Output the accumulated headers:
+      print STDOUT join("\n", @gff_headers), "\n";
+      #Output the sorted chromosome headers:
+      for my $chrom (sort keys %chrom_headers) {
+         print STDOUT join(" ", "##sequence-region", $chrom, $chrom_headers{$chrom}), "\n";
+      }
+      @gff_headers = ();
    }
    #Parse important elements out of the GFF3 records:
    my @gff_parts = split /\t/, $line;
    my $scaffold = $gff_parts[0];
    unless (exists($chromosomes{$scaffold})) { #Skip unanchored scaffolds
       print STDOUT $line;
+      print STDOUT "#${scaffold} not mapped to a chromosome\n" if $debug;
       next;
    }
    my $feature_start = $gff_parts[3];

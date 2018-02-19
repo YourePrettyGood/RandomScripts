@@ -94,7 +94,9 @@ if ($input_filepath eq '-') {
 } else {
    open $contigfile, "<", $input_filepath or die "Failed to open input FASTA file due to error $!\n";
 }
+
 print STDERR "Now reading contig file\n" if $debug;
+my $Ncount = 0;
 #Much of this code is based on subprogramQDD.pm by Dr. Emese Meglecz
 my %contiglens = (); #Associative array (aka hash) to hold the contig length counts
 my @contiglensarr; #Numerically-indexed array (aka list) to hold the contig lengths
@@ -120,6 +122,8 @@ while (my $record = <$contigfile>) {
          $contiglens{$seqlen} = 1;
          push(@contiglensarr, $seqlen);
       }
+      #Additional feature: Count the Ns in the assembly:
+      $Ncount += $record =~ tr/Nn//;
    }
 }
 close $contigfile;
@@ -155,6 +159,7 @@ if ($numseqs > 0) {
    print "Longest contig: ", $sortedcontiglens[0], "\n";
    print "Number of contigs: ", $numseqs, "\n";
    print "Average contig: ", $contiglensum / $numseqs, "\n";
+   print "Number of Ns: ", $Ncount, "\n";
 } else {
    print "N", $Xstr, ": 0\n";
    print "L", $Xstr, ": 0\n";
@@ -162,4 +167,5 @@ if ($numseqs > 0) {
    print "Longest contig: 0\n";
    print "Number of contigs: 0\n";
    print "Average contig: 0\n";
+   print "Number of Ns: ", $Ncount, "\n";
 }

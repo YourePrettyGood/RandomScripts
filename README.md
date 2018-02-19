@@ -192,6 +192,23 @@ Note that you have to omit the first line (a header) in order to pass the output
 
 `calculateDxy -p [population map TSV] [FASTA 1] [FASTA 2] [FASTA 3] [...] | awk 'NR>1{print $1"\t"$2"\t"$6"\t"$4;}' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
 
+### `calculatePolymorphism.cpp`
+
+This program calculates pi given a list of FASTA filenames as positional arguments. The output columns are:
+
+1. Scaffold ID
+2. Position
+3. Pi within the samples
+4. Whether this site should be omitted
+
+Pi is calculated as in calculateDxy.
+
+These are no longer exclusively for biallelic sites, but do reduce to the biallelic site formulae when i and j are constrained to 1 and 2.  Also, I haven't actually written out the proof yet, but I'm pretty sure that averaging the per-base values across a window is exactly equivalent to the Dxy and Pi you would calculate using Nei's formulae.
+
+Note that you have to omit the first line (a header) in order to pass the output to `nonOverlappingWindows`.  Also, if you want to take the windowed average of something other than D12, you'll need to pipe the output through a quick awk script:
+
+`calculatePolymorphism [FASTA 1] [FASTA 2] [FASTA 3] [...] | awk 'NR>1' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
+
 ## Illumina data parsing scripts:
 
 ### `ReadHistogram.sh`
