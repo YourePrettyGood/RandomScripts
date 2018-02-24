@@ -161,9 +161,26 @@ A typical call might look like this:
 
 This script is a wrapper for finding windowed heterozygosity and rate of fixed differences for one sample against the reference.  It basically just wraps the example line for `listPolyDivSites` in the case of "poly" being specified, and uses the `-d` flag and a different output TSV filename for the "div" case.
 
+Example usages:
+`oneSamplePolyDiv.sh poly [sample FASTA] [reference FASTA] [window size] > [sample prefix]_poly_w[window size in kb]kb.tsv`
+`oneSamplePolyDiv.sh div [sample FASTA] [reference FASTA] [window size] > [sample prefix]_div_w[window size in kb]kb.tsv`
+
 ### `oneSamplePolyDivPlot.R`
 
 This is a quick R script for making single-sample heterozygosity and rate of fixed difference plots for windows across the genome.  I think I hard-coded the specific set of scaffolds that it subsets out (i.e. the chromosome arms of the *Drosophila melanogaster* subgroup), so you may have to edit that for your own purposes.  And maybe having all scaffolds on the same plot won't suit your purposes.  But it shouldn't be hard to edit the ggplot call to fix that.
+
+Example usage, given you ran oneSamplePolyDiv.sh as in the examples above:
+`oneSamplePolyDivPlot.R ./ [sample prefix] [short ID for reference] [window size in bp] [maximum y coordinate to plot] arms`
+
+This produces a PDF with heterozygosity and fixed difference rate across the Drosophila chromosome arms (excluding the 4). The PDF filename follows the template `[sample prefix]_polydiv_w[window size in kb]kb.pdf`.
+
+Options for the last argument:
+
+1. `arms`: equivalent to `X,2L,2R,3L,3R`
+1. `allArms`: equivalent to `X,2L,2R,3L,3R,4`
+1. `chroms`: equivalent to `X,2,3`
+1. `allChroms`: equivalent to `X,2,3,4`
+1. comma-separated list of scaffolds or chromosomes
 
 ### `oneSamplePolyDivPerScaf.sh`
 
