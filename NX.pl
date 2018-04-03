@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 use POSIX;
 use warnings;
 use strict;
@@ -20,6 +20,7 @@ NX.pl [options] <FASTA> [X] [G]
  Positional arguments:
   <FASTA>              Input FASTA file (may use - for STDIN)
   [X]                  Quantile to use (may specify as option instead)
+                       May be a comma-separated list of quantiles
                        (Default: 50)
   [G]                  Genome size to use instead of assembly size
                        (May specify as option instead)
@@ -31,6 +32,7 @@ NX.pl [options] <FASTA> [X] [G]
                        (Calculates an NGX instead of NX)
   --genome_percent,-p  Percentage of genome to use for quantile
                        (Or specify as 2nd positional argument)
+                       May be comma-separated list of quantiles
                        (Default: 50)
   --debug,-d           Output extra information to STDERR
 
@@ -51,9 +53,12 @@ using X=100.  This may take a while though, due to sorting.
 
 =cut
 
+#Added quantile as comma-separated list
+
 my $input_filepath = '';
 my $X = 50;
 my $customsum = 0;
+my $NG = 0;
 my $seqlen;
 my $numseqs = 0;
 my $help = 0;
@@ -70,15 +75,25 @@ GetOptions('genome_size|g=i' => \$customsum, 'genome_percent|p=i' => \$X, 'debug
 pod2usage(-exitval => 1, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
 
+my @Xs = split /,/, $X;
+for my $quantile (@Xs) {
+   $quantile = $quantile + 0; #Convert to numeric, may have been string
+   die "Invalid quantile ${quantile}: Should be in the interval (0,100].\n" if $quantile <= 0 or $quantile > 100;
+}
+
 
 if ( scalar@ARGV > 0) { #Retrieve contig file path from command line argument list
    $input_filepath = $ARGV[0];
    if (scalar@ARGV > 1) { #Get the X (default 50)
-      $X = $ARGV[1] + 0; #Make sure it's read as numeric
-      die "Invalid X: Should be in the interval (0,100].\n" if $X <= 0 or $X > 100;
+      $X = $ARGV[1];
+      @Xs = split /,/, $X;
+      for my $quantile (@Xs) {
+         $quantile = $quantile + 0; #Convert to numeric, may have been string
+         die "Invalid quantile ${quantile}: Should be in the interval (0,100].\n" if $quantile <= 0 or $quantile > 100;
+      }
       if (scalar@ARGV > 2) { #Get the contig sum replacement, e.g. the G in NG50
          $customsum = $ARGV[2] + 0; #Make sure it's read as numeric
-         die "Invalid custom threshold: Should be an integer >= 1.\n" if $customsum <= 0;
+         die "Invalid custom threshold ${customsum}: Should be an integer >= 1.\n" if $customsum <= 0;
       }
    }
 } else {
@@ -86,11 +101,14 @@ if ( scalar@ARGV > 0) { #Retrieve contig file path from command line argument li
    exit;
 }
 
+$NG = 1 unless $customsum == 0; #Trigger for displaying NGX instead of NX
+
 my $contigfile;
 if ($input_filepath eq '-') {
    open $contigfile, "<&", \*STDIN or die "Failed to duplicate STDIN file handle for input FASTA due to error $!\n";
 } elsif ($input_filepath =~ /\.gz$/) {
    $contigfile = new IO::Uncompress::Gunzip $input_filepath or die "Failed to open input gzipped FASTA file due to error ${GunzipError}\n";
+   #IO::Uncompress::Gunzip is surprisingly slow, better to pipe or substitute
 } else {
    open $contigfile, "<", $input_filepath or die "Failed to open input FASTA file due to error $!\n";
 }
@@ -137,19 +155,22 @@ my @sortedcontiglens = sort {$b <=> $a} @contiglensarr;
 print STDERR "Finished sorting the contig length array\n" if $debug;
 #Now progressively add contigs from longest to shortest until the current addition
 #exceeds X/100 of the total contig length $contiglensum or custom threshold
-my $Xstr = $customsum > 0 ? "G" . $X : $X;
+my @sorted_quantiles = sort @Xs;
+#my $Xstr = $customsum > 0 ? "G" . $X : $X;
 $customsum = $customsum > 0 ? $customsum : $contiglensum;
-print STDERR "Now calculating N", $Xstr, " value\n" if $debug;
+#print STDERR "Now calculating N", $Xstr, " value\n" if $debug;
 my $curlen = 0;
 my $curctg = 0; #For LX
 OUTERLOOP: for (my $l = 0; $l < $arrlen; $l++) {
    for (my $m = 0; $m < $contiglens{$sortedcontiglens[$l]}; $m++) {
       $curctg++;
       $curlen = $curlen + $sortedcontiglens[$l];
-      if ($curlen >= ($customsum * $X / 100)) {
+      while ($curlen >= ($customsum * $sorted_quantiles[0] / 100)) {
+         my $Xstr = $NG > 0 ? "G" . $sorted_quantiles[0] : $sorted_quantiles[0];
          print "N", $Xstr, ": ", $sortedcontiglens[$l], "\n";
          print "L", $Xstr, ": ", $curctg, "\n";
-         last OUTERLOOP;
+         shift @sorted_quantiles; #Use up the quantiles as they are evaluated
+         last OUTERLOOP if scalar(@sorted_quantiles) == 0;
       }
    }
 }
@@ -161,11 +182,12 @@ if ($numseqs > 0) {
    print "Average contig: ", $contiglensum / $numseqs, "\n";
    print "Number of Ns: ", $Ncount, "\n";
 } else {
-   print "N", $Xstr, ": 0\n";
-   print "L", $Xstr, ": 0\n";
-   print "Shortest contig: 0\n";
-   print "Longest contig: 0\n";
-   print "Number of contigs: 0\n";
-   print "Average contig: 0\n";
-   print "Number of Ns: ", $Ncount, "\n";
+   die "No contigs/scaffolds provided\n";
+   #print "N", $Xstr, ": 0\n";
+   #print "L", $Xstr, ": 0\n";
+   #print "Shortest contig: 0\n";
+   #print "Longest contig: 0\n";
+   #print "Number of contigs: 0\n";
+   #print "Average contig: 0\n";
+   #print "Number of Ns: ", $Ncount, "\n";
 }

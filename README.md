@@ -32,6 +32,8 @@ This script is needed by `divideConquerParser.sh`, as it is the main parsing wor
 
 Calculates some standard contiguity statistics from an assembly FASTA.  By default, it calculates the N50 and L50 (length-weighted median contig/scaffold size and number, respectively), and all calls to it also indicate the total assembly size, number of contigs/scaffolds in the assembly, length of longest and shortest contig/scaffold, and average contig/scaffold length.  Options include changing the quantile from 50 (e.g. set quantile to 90 to calculate N90 and L90, setting it to 50 is the same as default), and specifying the genome size (e.g. in the default case, to calculate an NG50).
 
+Multiple quantiles can be evaluated by specifying a comma-separated (no spaces) list of quantiles as input.
+
 You can pass `-` as the FASTA file path, and the script will read the FASTA from STDIN, so it can easily be incorporated into piped one-liners.
 
 Also, interestingly, with some upstream fiddling to get reads into FASTA format, you can calculate the NRX statistics (like NR25 and NR40) with this script, although it's fairly slow for large numbers of reads.  We're limited by Perl's sort routine's time complexity, unfortunately.
@@ -56,9 +58,17 @@ Calculate N50 on a gzipped assembly (e.g. from 10x Genomics' Supernova mkoutput)
 
 or
 
+`NX.pl <(gzip -dc MySupernovaAsm.fa.gz)`
+
+or
+
 `NX.pl MySupernovaAsm.fa.gz`
 
-though piping seems to be faster in many cases.
+though piping and command substitution seem to be faster in most cases.
+
+Calculate the N10, N50, and N90 for the Dmel assembly used above:
+
+`NX.pl dmel-all-chromosome-r6.13.fasta 10,50,90`
 
 ### `manualScaffold.pl`
 
