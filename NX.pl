@@ -125,7 +125,7 @@ while (my $record = <$contigfile>) {
    unless ($record eq '') { #Make sure the record isn't empty
       $record =~ /.*\n/; #Match the pattern (i.e. everything before the newline) within $record's contents
       my $header = $&; #Copy the previous pattern match (i.e. everything before the newline) into $header
-      $record =~ s/$header//; #Delete (i.e. substitute with nothing) the header from $record
+      $record =~ s/\Q$header\E//; #Delete (i.e. substitute with nothing) the header from $record
       $record =~ s/\s//gm; #Delete all newlines and "whitespace characters" from the sequence
       #Now we have the sequence in $record, and the header in $header
       $seqlen = length $record;

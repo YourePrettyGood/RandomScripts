@@ -72,9 +72,19 @@ Calculate the N10, N50, and N90 for the Dmel assembly used above:
 
 ### `manualScaffold.pl`
 
+Usage:
+
+`manualScaffold.pl -i [path to unscaffolded FASTA] [options] <configuration string>`
+
 This was originally developed as a quick way to manually scaffold contigs into chromosome arms.  You must know *a priori* what the order and orientation of contigs needs to be, as you specify a configuration string, or supply an AGP file to dictate how the script sews the contigs together, and how to label the resultant scaffolds.
 
-The configuration string format isn't the most intuitive, but it was easy to come up with.  Defined using the [augmented BNF grammar](https://en.wikipedia.org/wiki/Augmented_Backus%E2%80%93Naur_form):
+If you wish to read the input unscaffolded FASTA from STDIN, just omit the `-i` option.
+
+The `-u` option prints contigs that were not scaffolded into the output FASTA as well.  It just saves you from having to write out a very long configuration string or AGP file.
+
+It has now been adapted to scaffold based on an [AGP version 2.0](https://www.ncbi.nlm.nih.gov/assembly/agp/AGP_Specification/) file with the `-a` option, which properly treats `N` and `U` gap records for length, although this script ignores columns 2, 3, 7, and 8 (so it takes the entirety of the contig even if the AGP says to take a substring).
+
+The original configuration string format isn't the most intuitive, but it was easy to come up with.  Defined using the [augmented BNF grammar](https://en.wikipedia.org/wiki/Augmented_Backus%E2%80%93Naur_form):
 
 `config-string = scaffold*(scaffold-delim scaffold)`
 
@@ -149,6 +159,24 @@ For instance, if you have the "GFF" output from the BRAKER1 pipeline, this is no
 `gtf2gff.pl --printExon --printUTR --gff3 --out BRAKER_output_gtf2gff.gff3 < BRAKER_output.gff`
 
 `constructCDSesFromGFF3.pl -i BRAKER_genome.fasta -g BRAKER_output_gtf2gff.gff3 > BRAKER_output_gtf2gff_transcripts.fasta`
+
+### `createGFFfromExonerate.pl`
+
+Usage:
+
+`createGFFfromExonerate.pl -v DyakTai18E2_DmelProteinsExonerate.out -f Dyak_Tai18E2_renamed_w60.fasta.fai -w Dyak_Tai18E2_DmelProteins_wonky_genes.gff3 -p "FB" > Dyak_Tai18E2_DmelProteins_fromExonerate.gff3`
+
+This script takes VULGAR alignments from an Exonerate run of proteins against a genome, and generates a [GFF3](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md) of coding sequences, including all gene and mRNA records, if the script is able to infer the appropriate gene and/or mRNA ID.  The gene ID is usually scraped from the human-readable alignment portion of Exonerate's output (in particular, from the contents of the "Query: " line), looking for a pair of IDs after a "parent=" tag definition, as is seen in FlyBase or KAIKObase headers.  The first ID is assumed to be the gene ID, and the second is assumed to be the transcript ID.  If no such parent= tag can be found, new gene and transcript IDs are synthesized by prefixing the protein ID (prior to the first space in its name) with a supplied prefix (default: my) and "gn" for gene IDs, and "tr" for transcript IDs.
+
+Any protein alignments with particularly odd configurations won't be output to the main GFF3, and are instead optionally output to a file specified with the `-w` option.
+
+### `extractCDSfromVulgar.pl`
+
+Usage:
+
+`extractCDSfromVulgar.pl -v DyakTai18E2_DmelProteinsExonerate.out -i Dyak_Tai18E2_renamed_w60.fasta -p Dyak_Tai18E2 > Dyak_Tai18E2_DmelProteins_CDSes.fasta`
+
+This script takes VULGAR alignments from an Exonerate run of proteins against a genome, and extracts CDSes for each protein provided, skipping frameshifts (and implicitly deletions) so that the resulting CDS is still in-frame.
 
 ## Genome-wide statistics programs/scripts:
 
