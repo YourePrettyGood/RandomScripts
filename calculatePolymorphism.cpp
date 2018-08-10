@@ -4,6 +4,7 @@
  * Version 1.0 written 2016/10/21                                           *
  * Version 1.1 written 2017/03/06 (Added base counts to debug output)       *
  * Version 1.2 written 2017/05/26 (Finally implemented inbred pi)           *
+ * Version 1.3 written 2018/08/09 (Fixed bug ignoring softmasked bases)     *
  *                                                                          *
  * Description:                                                             *
  *                                                                          *
@@ -24,7 +25,7 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "1.2"
+#define VERSION "1.3"
 
 //Define number of bases:
 #define NUM_BASES 4
@@ -90,15 +91,19 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
       for (unsigned long j = 0; j < num_sequences; j++) {
          switch (FASTA_sequences[j][i]) {
             case 'A':
+            case 'a':
                base_frequency[0] += inbred ? 1 : 2;
                break;
             case 'C':
+            case 'c':
                base_frequency[1] += inbred ? 1 : 2;
                break;
             case 'G':
+            case 'g':
                base_frequency[2] += inbred ? 1 : 2;
                break;
             case 'K': //G/T het site
+            case 'k':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 2 : 3]++;
                } else {
@@ -107,6 +112,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'M': //A/C het site
+            case 'm':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 0 : 1]++;
                } else {
@@ -115,6 +121,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'R': //A/G het site
+            case 'r':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 0 : 2]++;
                } else {
@@ -123,6 +130,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'S': //C/G het site
+            case 's':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 1 : 2]++;
                } else {
@@ -131,9 +139,11 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'T':
+            case 't':
                base_frequency[3] += inbred ? 1 : 2;
                break;
             case 'W': //A/T het site
+            case 'w':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 0 : 3]++;
                } else {
@@ -142,6 +152,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'Y': //C/T het site
+            case 'y':
                if (inbred) {
                   base_frequency[rand() <= (RAND_MAX-1)/2 ? 1 : 3]++;
                } else {
@@ -150,6 +161,7 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
                }
                break;
             case 'N':
+            case 'n':
                base_frequency[4] += inbred ? 1 : 2;
                break;
             case '-':
