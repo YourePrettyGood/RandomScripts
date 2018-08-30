@@ -12,7 +12,7 @@ check_package <- function(pkg_name) {
 check_package("reshape2")
 check_package("ggplot2")
 
-plot_polydiv <- function(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax) {
+plot_polydiv_faceted <- function(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax) {
    poly <- read.table(polyfile,
       colClasses=c("character", "integer", "numeric"),
       col.names=c("Scaffold", "Position", "Polymorphism"));
@@ -34,14 +34,44 @@ plot_polydiv <- function(polyfile, divfile, scaffold_list, prefix, ref, plotfile
       ggtitle(paste0("Polymorphism and Divergence in ", round(window_size/1000), "kb windows for ", prefix, " against ", ref));
    ggsave(plotfile, width=10.5, height=8.0, units="in");
 }
-drosophila_plot_polydiv <- function(dir, prefix, ref, window_size, ymax, scaffold_list) {
+
+plot_polydiv_separate <- function(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax) {
+   poly <- read.table(polyfile,
+      colClasses=c("character", "integer", "numeric"),
+      col.names=c("Scaffold", "Position", "Polymorphism"));
+   div <- read.table(divfile,
+      colClasses=c("character", "integer", "numeric"),
+      col.names=c("Scaffold", "Position", "Divergence"));
+   polydiv <- poly;
+   polydiv$Divergence <- div$Divergence;
+   polydiv_melted <- melt(polydiv,
+      id.vars=c("Scaffold", "Position"),
+      variable.name="Statistic",
+      value.name="Value");
+   pdf(plotfile, width=10.5, height=8.0)
+   for (scaffold in scaffold_list) {
+      print(ggplot(subset(polydiv_melted, Scaffold == scaffold),
+         aes(x=Position, y=Value, group=Statistic, colour=Statistic)) +
+         geom_line() +
+         theme_bw() +
+         ylim(0, ymax) +
+         ggtitle(paste0("Polymorphism and Divergence in ", round(window_size/1000), "kb windows on scaffold ", scaffold, " for ", prefix, " against ", ref)))
+   }
+   dev.off()
+}
+
+individual_plot_polydiv <- function(dir, prefix, ref, window_size, ymax, scaffold_list) {
    suffix <- paste0("_w", round(window_size/1000), "kb");
    tsvsuffix <- paste0(suffix, ".tsv");
    pdfsuffix <- paste0(suffix, ".pdf");
    polyfile <- paste0(dir, prefix, "_poly", tsvsuffix);
    divfile <- paste0(dir, prefix, "_div", tsvsuffix);
    plotfile <- paste0(dir, prefix, "_polydiv", pdfsuffix);
-   plot_polydiv(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax)
+   if (length(scaffold_list) > 6) {
+      plot_polydiv_separate(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax)
+   } else {
+      plot_polydiv_faceted(polyfile, divfile, scaffold_list, prefix, ref, plotfile, window_size, ymax)
+   }
 }
 
 dir <- options[1]
@@ -63,4 +93,4 @@ if (scaflist == "allArms") {
    scaffold_list <- unlist(strsplit(scaflist, ","));
 }
 
-drosophila_plot_polydiv(dir, prefix, ref, window_size, ymax, scaffold_list)
+individual_plot_polydiv(dir, prefix, ref, window_size, ymax, scaffold_list)

@@ -28,6 +28,7 @@ extractRegions.pl [options]
   --input_genome,-i     Path to input genome FASTA file (default: STDIN)
   --bed_path,-b         Path to BED file indicating regions to be extracted
                         from the FASTA
+  --prefix,-p           Prefix for FASTA headers (off by default)
 
 =head1 DESCRIPTION
 
@@ -41,7 +42,8 @@ my $help = 0;
 my $man = 0;
 my $genome_path = "STDIN";
 my $bed_path = "";
-GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
+my $header_prefix = "";
+GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'prefix|p=s' => \$header_prefix, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
@@ -84,7 +86,10 @@ while (my $line = <GENOME>) {
          for my $range (@{$regions_per_scaffold{$scaffold_name}}) {
             my ($range_start, $range_length) = split /:/, $range, 2;
             my $region_sequence = substr $scaffold_sequence, $range_start, $range_length;
-            my $region_name = ">${scaffold_name}:" . ($range_start+1) . ".." . ($range_start+$range_length+1);
+            my $region_name = "";
+            $region_name = ">${header_prefix}_" if $header_prefix ne "";
+            $region_name = ">" if $header_prefix eq "";
+            $region_name .= "${scaffold_name}:" . ($range_start+1) . ".." . ($range_start+$range_length);
             print STDOUT $region_name, "\n", $region_sequence, "\n";
          }
       }
@@ -105,7 +110,10 @@ if (exists($regions_per_scaffold{$scaffold_name})) {
    for my $range (@{$regions_per_scaffold{$scaffold_name}}) {
       my ($range_start, $range_length) = split /:/, $range, 2;
       my $region_sequence = substr $scaffold_sequence, $range_start, $range_length;
-      my $region_name = ">${scaffold_name}:${range_start}.." . $range_start+$range_length;
+      my $region_name = "";
+      $region_name = ">${header_prefix}_" if $header_prefix ne "";
+      $region_name = ">" if $header_prefix eq "";
+      $region_name .= "${scaffold_name}:" . ($range_start+1) . ".." . ($range_start+$range_length);
       print STDOUT $region_name, "\n", $region_sequence, "\n";
    }
 }

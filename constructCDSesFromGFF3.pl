@@ -78,12 +78,16 @@ unless(open(GFF, "<", $gff3_path)) {
 #Revised to work with GFF3 containing more than just CDS records, though
 # still requiring them to be locally sorted (i.e. within gene)
 
+my $FASTA_skip = 0; #Skip all lines after the ##FASTA line if present
+
 #Iterate over the GFF features and build the Exon Range Strings
 # for each CDS:
 my %CDS_coordinates = ();
 my %CDSes_per_scaffold = ();
 while (my $line = <GFF>) {
    chomp $line;
+   $FASTA_skip = 1 if $line =~ /^##FASTA/; #Trigger FASTA skip
+   next if $FASTA_skip;
    next if $line =~ /^#/; #Skip comment lines
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
    next unless $type eq "CDS";
