@@ -41,6 +41,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #  This value was very qualitatively estimated from Rimmer et al. 2014 Nat. Gen. for humans#
 ############################################################################################
 
+my $SCRIPTNAME = "simulateDivergedHaplotype.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -66,6 +69,7 @@ simulateDivergedHaplotype.pl [options] <% divergence>
   --indel_geom,-g          Parameter value for the geometric distribution
                            used to model indel length distribution
                            (optional, decimal between 0 and 1, default: 0.1)
+  --version,-v             Output version string
 
  Mandatory:
   % divergence             Required parameter specifying the percent
@@ -177,9 +181,13 @@ my $ref_path = '';
 my $out_path = '';
 my $indels = 0;
 my $indel_geometric_parameter = 0.1;
-GetOptions('input_haplotype|i=s' => \$ref_path, 'output_haplotype|o=s' => \$out_path, 'indels|n' => \$indels, 'indel_geom|g=f' => \$indel_geometric_parameter, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_haplotype|i=s' => \$ref_path, 'output_haplotype|o=s' => \$out_path, 'indels|n' => \$indels, 'indel_geom|g=f' => \$indel_geometric_parameter, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 my $percent_divergence = 1.0;
 if (scalar@ARGV < 1) { #Missing percent divergence parameter

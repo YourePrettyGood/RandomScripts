@@ -14,6 +14,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 # based on a barcode file, and incorporating mismatches if no
 # perfectly matching barcode is found.
 
+my $SCRIPTNAME = "labelIndexReadHistogram.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -28,6 +31,7 @@ labelIndexReadHistogram.pl [options]
   --help,-h,-?         Display this documentation
   --input_histogram,-i Path to input index read histogram TSV file (default: STDIN)
   --barcode_file,-b    Path to barcode file
+  --version,-v         Output version string
 
 =head1 DESCRIPTION
 
@@ -41,9 +45,13 @@ my $help = 0;
 my $man = 0;
 my $histogram_path = "STDIN";
 my $bcfile_path = "";
-GetOptions('input_histogram|i=s' => \$histogram_path, 'barcode_file|b=s' => \$bcfile_path, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_histogram|i=s' => \$histogram_path, 'barcode_file|b=s' => \$bcfile_path, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the index read histogram file, or set it up to be read from STDIN:
 if ($histogram_path ne "STDIN") {

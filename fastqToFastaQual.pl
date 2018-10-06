@@ -19,6 +19,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #  --qual_file,-q:		Output QUAL file name                                   #
 #########################################################################################
 
+my $SCRIPTNAME = "fastqToFastaQual.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -34,6 +37,7 @@ fastqToFastaQual.pl [options]
   --input_file,-i	Input FASTQ file name (default: STDIN)
   --fasta_file,-a	Output FASTA file
   --qual_file,-q	Output QUAL file
+  --version,-v          Output version string
 
 =head1 DESCRIPTION
 This script generates FASTA and QUAL files from a FASTQ file, which may be
@@ -46,9 +50,13 @@ my $man = 0;
 my $input_path = "STDIN";
 my $output_fasta = "";
 my $output_qual = "";
-GetOptions('input_file|i=s' => \$input_path, 'fasta_file|a=s' => \$output_fasta, 'qual_file|q=s' => \$output_qual, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_file|i=s' => \$input_path, 'fasta_file|a=s' => \$output_fasta, 'qual_file|q=s' => \$output_qual, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 if ($input_path ne "STDIN") {
    unless(open(FASTQ, "<", $input_path)) {

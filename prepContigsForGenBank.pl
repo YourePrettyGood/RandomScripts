@@ -26,6 +26,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #				[contig name 3]*->[contig name 4]=>[Scaffold name]      #
 #########################################################################################
 
+my $SCRIPTNAME = "prepContigsForGenBank.pl";
+my $VERSION = "1.1";
+
 =pod
 
 =head1 NAME
@@ -37,13 +40,14 @@ prepContigsForGenBank.pl - Generate annotated FASTQ and AGP for GenBank submissi
 prepContigsForGenBank.pl [options] <Configuration String>
 
  Options:
-  --help,-h,-?		Display this help documentation
-  --input_file,-i	Input contigs FASTQ file name (default: STDIN)
-  --agp_file,-a		Output AGP file
-  --unscaffolded,-u	Include unscaffolded contigs in the AGP
+  --help,-h,-?          Display this help documentation
+  --input_file,-i       Input contigs FASTQ file name (default: STDIN)
+  --agp_file,-a         Output AGP file
+  --unscaffolded,-u     Include unscaffolded contigs in the AGP
   --gap_size,-g         Gap size to use for AGP gap lines (Default: 500)
   --gap_type,-t         Gap type to use, either Unknown size, or kNown size (Default: N)
-  --mtDNA,-m:		Annotate mtDNA with these fields
+  --mtDNA,-m            Annotate mtDNA with these fields
+  --version,-v          Output version string
 
  Mandatory:
   Configuration String	Format string composed as follows:
@@ -80,9 +84,13 @@ my $linkage_evidence = "align_genus"; #For Drosophila, we used MUMmer
 #Perhaps use "align_xgenus" for protein synteny-based linkage
 #Use "map" for linkage map, e.g. MSG linkage LOD
 my $mtDNA_fields = "";
-GetOptions('input_file|i=s' => \$input_path, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'gap_size|g=i' => \$gap_size, 'gap_type|t=s' => \$gap_type, 'mtDNA|m=s' => \$mtDNA_fields, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_file|i=s' => \$input_path, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'gap_size|g=i' => \$gap_size, 'gap_type|t=s' => \$gap_type, 'mtDNA|m=s' => \$mtDNA_fields, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 if ($input_path ne "STDIN") {
    unless(open(CONTIGS, "<", $input_path)) {

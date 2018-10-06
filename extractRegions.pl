@@ -13,6 +13,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #First pass script to extract regions IDed by a BED file from a FASTA file
 # as individual records with headers based on the BED line.
 
+my $SCRIPTNAME = "extractRegions.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -29,6 +32,7 @@ extractRegions.pl [options]
   --bed_path,-b         Path to BED file indicating regions to be extracted
                         from the FASTA
   --prefix,-p           Prefix for FASTA headers (off by default)
+  --version,-v          Output version string
 
 =head1 DESCRIPTION
 
@@ -43,9 +47,13 @@ my $man = 0;
 my $genome_path = "STDIN";
 my $bed_path = "";
 my $header_prefix = "";
-GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'prefix|p=s' => \$header_prefix, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'prefix|p=s' => \$header_prefix, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
 if ($genome_path ne "STDIN") {

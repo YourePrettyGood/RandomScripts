@@ -19,6 +19,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 # CDS records, although still assuming local sortedness
 # (i.e. sorted order within a gene)
 
+my $SCRIPTNAME = "constructCDSesFromGFF3.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -35,6 +38,7 @@ constructCDSesFromGFF3.pl [options]
   --gff3_file,-g         Path to genome annotation GFF3 file
   --output_ers,-e        Output the "Exon Range String" for the CDS?
                          0 or 1, default is 0
+  --version,-v           Output version string
 
 =head1 DESCRIPTION
 
@@ -49,9 +53,13 @@ my $man = 0;
 my $genome_path = "STDIN";
 my $gff3_path = "";
 my $output_exon_range_strings = 0;
-GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'output_ers|e' => \$output_exon_range_strings, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'output_ers|e' => \$output_exon_range_strings, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
 if ($genome_path ne "STDIN") {

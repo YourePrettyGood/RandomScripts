@@ -14,6 +14,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 # genomic space based on a GFF3
 #Assumes sorted order of records within a gene in a GFF3
 
+my $SCRIPTNAME = "CDStoGenomicIntervals.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -30,6 +33,7 @@ CDStoGenomicIntervals.pl [options]
                          (default: STDIN)
   --gff3_file,-g         Path to genome annotation GFF3 file
   --debug,-d             Extra debugging output
+  --version,-v           Output version string
 
 =head1 DESCRIPTION
 
@@ -43,9 +47,13 @@ my $man = 0;
 my $bed_path = "STDIN";
 my $gff3_path = "";
 my $debug = 0;
-GetOptions('input_BED|i=s' => \$bed_path, 'gff3_file|g=s' => \$gff3_path, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+my $dispversion = 0;
+GetOptions('input_BED|i=s' => \$bed_path, 'gff3_file|g=s' => \$gff3_path, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the CDS-space BED file, or set it up to be read from STDIN:
 my $bedfh;

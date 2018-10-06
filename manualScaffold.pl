@@ -32,6 +32,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #				[contig name 3]*->[contig name 4]=>[Scaffold name]      #
 #########################################################################################
 
+my $SCRIPTNAME = "manualScaffold.pl";
+my $VERSION = "1.3";
+
 =pod
 
 =head1 NAME
@@ -48,6 +51,7 @@ manualScaffold.pl [options] <Configuration String>
   --config_string,-c    File containing long configuration string (optional)
   --agp_file,-a		Input AGP file (instead of configuration string)
   --unscaffolded,-u	Output unscaffolded contigs individually at the end
+  --version,-v          Output version string
 
  Mandatory:
   Configuration String	Format string composed as follows:
@@ -71,9 +75,6 @@ Outputs the scaffolds to STDOUT.
 
 =cut
 
-my $scriptname = "$0";
-my $version = "1.3";
-
 my $display_version = 0;
 my $help = 0;
 my $man = 0;
@@ -82,10 +83,13 @@ my $unscaffolded = 0;
 my $config_string = "";
 my $agp_file = "";
 my $config_string_file = "";
-GetOptions('input_file|i=s' => \$input_path, 'config_string|c=s' => \$config_string_file, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'help|h|?' => \$help, man => \$man, 'version|v' => \$display_version) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_file|i=s' => \$input_path, 'config_string|c=s' => \$config_string_file, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'help|h|?+' => \$help, man => \$man, 'version|v' => \$dispversion) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
-die join(" ", $scriptname, "version", $version) if $display_version;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 if ($input_path ne "STDIN") {
    unless(open(CONTIGS, "<", $input_path)) {

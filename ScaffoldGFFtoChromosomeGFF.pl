@@ -8,6 +8,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #This script takes an AGP and a GFF on scaffolds, and outputs a GFF in
 #chromosomal coordinate space.
 
+my $SCRIPTNAME = "ScaffoldGFFtoChromosomeGFF.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -20,6 +23,7 @@ ScaffoldGFFtoChromosomeGFF.pl -a [AGP file] -g [Scaffold GFF3 file] > [Chromosom
 
  Options:
   --help,-h,-?		Display this help documentation
+  --version,-v          Output version string
  Mandatory:
   --agp,-a		AGP file mapping scaffolds to chromosomes
   --gff,-g		GFF3 file of features in scaffold-space
@@ -37,11 +41,16 @@ my $man = 0;
 my $debug = 0;
 my $input_agp = "";
 my $input_gff = "";
+my $dispversion = 0;
 
 #Fetch the command line parameters
-GetOptions('help|h|?' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, 'debug|d' => \$debug, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+GetOptions('version|v' => \$dispversion, 'help|h|?+' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, 'debug|d' => \$debug, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
+
 pod2usage(-exitval => 2, -output => \*STDERR) if $input_agp eq "" or $input_gff eq "";
 
 #Make sure the required parameters are filled out correctly

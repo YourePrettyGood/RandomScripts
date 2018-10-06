@@ -5,6 +5,9 @@ use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 
+my $SCRIPTNAME = "overlappingFeatures.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -20,6 +23,7 @@ overlappingFeatures.pl [options]
   --interval_bed,-b     Input BED file indicating intervals of interest
                         (Default: STDIN)
   --input_gff,-g        Input GFF3 file (sorted) of features for the genome
+  --version,-v          Output version string
 
 =head1 DESCRIPTION
 
@@ -37,9 +41,13 @@ my $help = 0;
 my $man = 0;
 my $bed_path = '';
 my $gff_path = '';
-GetOptions('input_gff|g=s' => \$gff_path, 'interval_bed|b=s' => \$bed_path, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_gff|g=s' => \$gff_path, 'interval_bed|b=s' => \$bed_path, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 my %intervals = ();
 

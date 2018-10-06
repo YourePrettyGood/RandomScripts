@@ -7,6 +7,9 @@ use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
+my $SCRIPTNAME = "NX.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -35,6 +38,7 @@ NX.pl [options] <FASTA> [X] [G]
                        May be comma-separated list of quantiles
                        (Default: 50)
   --debug,-d           Output extra information to STDERR
+  --version,-v         Output version string
 
 =head1 DESCRIPTION
 
@@ -64,6 +68,7 @@ my $numseqs = 0;
 my $help = 0;
 my $man = 0;
 my $debug = 0;
+my $dispversion = 0;
 
 #This script calculates the NX of a set of contigs in FASTA format, where X is in (0,100].
 #For X=50, this script is equivalent to N50.pl
@@ -71,9 +76,12 @@ my $debug = 0;
 #Thus, the NG50 is calculated as ./NX.pl [FASTA file] 50 [genome size], and the NR25 is calculated as
 #./NX.pl [read file] 100 [25*genome size]
 
-GetOptions('genome_size|g=i' => \$customsum, 'genome_percent|p=i' => \$X, 'debug|d' => \$debug, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+GetOptions('genome_size|g=i' => \$customsum, 'genome_percent|p=i' => \$X, 'debug|d+' => \$debug, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 my @Xs = split /,/, $X;
 for my $quantile (@Xs) {

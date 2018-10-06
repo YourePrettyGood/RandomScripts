@@ -16,6 +16,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 # exon record is identical to its CDS record, and each gene record
 # is similar if not identical to its mRNA record(s).
 
+my $SCRIPTNAME = "createGFFfromExonerate.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -37,6 +40,7 @@ createGFFfromExonerate.pl [options]
   --prefix,-p           Prefix for genes and transcripts if no gene or
                         transcript IDs found in Query: line of exonerate
                         output
+  --version             Output version string
 
 =head1 DESCRIPTION
 
@@ -55,9 +59,13 @@ my $vulgar_path = "";
 my $wonky_path = "";
 my $fai_path = "";
 my $prefix = "my";
-GetOptions('vulgar_path|v=s' => \$vulgar_path, 'wonky_gff|w=s' => \$wonky_path, 'genome_fai|f=s' => \$fai_path, 'prefix|p=s' => \$prefix, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('vulgar_path|v=s' => \$vulgar_path, 'wonky_gff|w=s' => \$wonky_path, 'genome_fai|f=s' => \$fai_path, 'prefix|p=s' => \$prefix, 'version' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the genome FASTA index (.fai) file and get set for the GFF3
 # ##sequence-region header lines:

@@ -18,6 +18,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 # other non-4-fold CDS sites, short intronic sites, long intronic sites,
 # and intergenic sites (and perhaps UTRs).
 
+my $SCRIPTNAME = "extractSites.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -33,6 +36,7 @@ extractSites.pl [options]
   --input_genome,-i     Path to input genome FASTA file (default: STDIN)
   --bed_path,-b         Path to BED file indicating sites to be extracted
                         from the FASTA
+  --version,-v          Output version string
 
 =head1 DESCRIPTION
 
@@ -46,9 +50,13 @@ my $help = 0;
 my $man = 0;
 my $genome_path = "STDIN";
 my $bed_path = "";
-GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_genome|i=s' => \$genome_path, 'bed_file|b=s' => \$bed_path, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
 if ($genome_path ne "STDIN") {

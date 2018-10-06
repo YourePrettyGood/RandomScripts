@@ -7,6 +7,9 @@ use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
+my $SCRIPTNAME = "subsetVCFstats.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -43,10 +46,14 @@ my $bed_path = "";
 my $help = 0;
 my $man = 0;
 my $debug = 0;
+my $dispversion = 0;
 
-GetOptions('vcf_stats|i=s' => \$stats_path, 'bed_file|b=s' => \$bed_path, 'debug|d' => \$debug, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+GetOptions('vcf_stats|i=s' => \$stats_path, 'bed_file|b=s' => \$bed_path, 'debug|d+' => \$debug, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 my $bed_file;
 open $bed_file, "<", $bed_path or die "Failed to open input BED file ${bed_path} due to error $!";

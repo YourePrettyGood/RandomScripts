@@ -13,6 +13,9 @@ Getopt::Long::Configure qw(gnu_getopt);
 #First pass script to extract CDSes identified in a file resembling BED,
 # but with a fourth column identifying the protein to be extracted.
 
+my $SCRIPTNAME = "extractCDSfromVulgar.pl";
+my $VERSION = "1.0";
+
 =pod
 
 =head1 NAME
@@ -31,6 +34,7 @@ extractCDSfromVulgar.pl [options]
   --header_prefix,-p    String to prepend to protein ID for output FASTA
                         (default is empty string, so _ is prepended)
   --debug,-d            Output debugging information to STDERR
+  --version             Output version string
 
 =head1 DESCRIPTION
 
@@ -46,9 +50,13 @@ my $genome_path = "STDIN";
 my $vulgar_path = "";
 my $header_prefix = "";
 my $debug = 0;
-GetOptions('input_genome|i=s' => \$genome_path, 'vulgar_path|v=s' => \$vulgar_path, 'header_prefix|p=s' => \$header_prefix, 'debug|d' => \$debug, 'help|h|?' => \$help, man => \$man) or pod2usage(2);
-pod2usage(-exitval => 1, -output => \*STDERR) if $help;
+my $dispversion = 0;
+GetOptions('input_genome|i=s' => \$genome_path, 'vulgar_path|v=s' => \$vulgar_path, 'header_prefix|p=s' => \$header_prefix, 'version' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+
+print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
+exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
 if ($genome_path ne "STDIN") {
