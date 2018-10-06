@@ -3,6 +3,7 @@
  * Written by Patrick Reilly                                                *
  * Version 1.0 written 2017/01/29                                           *
  * Version 2.1 written 2017/05/30 (added shared polymorphism and inbred)    *
+ * Version 2.2 written 2017/11/13 (no need for list of pseudorefs)          *
  *                                                                          *
  * Description:                                                             *
  * This script takes in pseudoreference FASTAs and a TSV describing which   *
@@ -13,7 +14,8 @@
  *  all samples are assumed haploid, where a single allele is chosen at     *
  *  random for each heterozygous site.                                      *
  *                                                                          *
- * Syntax: calculateDxy [options] [list of pseudoreference FASTAs]          *
+ * Old Syntax: calculateDxy [options] [list of pseudoreference FASTAs]      *
+ * Syntax: calculateDxy [options]
  ****************************************************************************/
 
 #include <iostream>
@@ -35,13 +37,13 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "2.1"
+#define VERSION "2.2"
 
 //Define number of bases:
 #define NUM_BASES 4
 
 //Usage/help:
-#define USAGE "calculateDxy\nUsage:\n calculateDxy [options] [list of pseudoreference FASTAs]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n -s,--shared_poly\tIdentify shared polymorphisms between populations\n -i,--inbred\tTreat pseudoreferences as inbred haploids\n -r,--prng_seed\tSet PRNG seed for random allele selection in inbred lines\n\t\tDefault: 42\n"
+#define USAGE "calculateDxy\nUsage:\n calculateDxy [options]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n -s,--shared_poly\tIdentify shared polymorphisms between populations\n -i,--inbred\tTreat pseudoreferences as inbred haploids\n -r,--prng_seed\tSet PRNG seed for random allele selection in inbred lines\n\t\tDefault: 42\n"
 
 using namespace std;
 
@@ -437,9 +439,9 @@ int main(int argc, char **argv) {
       }
    }
    //Read in the positional arguments:
-   while (optind < argc) {
-      input_FASTA_paths.push_back(argv[optind++]);
-   }
+   //while (optind < argc) {
+   //   input_FASTA_paths.push_back(argv[optind++]);
+   //}
    
    //Set the seed of the PRNG:
    srand(prng_seed);
@@ -456,22 +458,31 @@ int main(int argc, char **argv) {
    map<unsigned long, unsigned long> population_map;
    set<unsigned long> populations;
    string popline;
-   unsigned long num_FASTAs = input_FASTA_paths.size();
    if (debug) {
       cerr << "Reading population TSV file." << endl;
    }
+   unsigned long fasta_index = 0;
    while (getline(pop_file, popline)) {
       vector<string> line_vector;
       line_vector = splitString(popline, '\t');
-      for (unsigned long i = 0; i < num_FASTAs; i++) {
-         if (input_FASTA_paths[i] == line_vector[0]) {
-            population_map[i] = stoul(line_vector[1]);
-            break;
-         }
+      //for (unsigned long i = 0; i < num_FASTAs; i++) {
+         //if (input_FASTA_paths[i] == line_vector[0]) {
+      try {
+         population_map[fasta_index++] = stoul(line_vector[1]);
+      } catch (const invalid_argument& e) {
+         cerr << "Invalid population ID in second column of population TSV." << endl;
+         cerr << "Must be a positive integer." << endl;
+         pop_file.close();
+         return 9;
       }
+      input_FASTA_paths.push_back(line_vector[0]);
+         //   break;
+         //}
+      //}
       populations.insert(stoul(line_vector[1]));
    }
    pop_file.close();
+   //unsigned long num_FASTAs = input_FASTA_paths.size();
    unsigned long num_populations = populations.size();
    if (debug) {
       cerr << "Read in " << num_populations << " populations." << endl;
@@ -501,9 +512,10 @@ int main(int argc, char **argv) {
    bool successfully_opened = openFASTAs(input_FASTAs, input_FASTA_paths);
    if (!successfully_opened) {
       closeFASTAs(input_FASTAs);
+      cerr << "Unable to open at least one of the FASTAs provided." << endl;
       return 2;
    }
-   cerr << "Opened " << input_FASTAs.size() << " input FASTA files." << endl;
+   cerr << "Opened " << input_FASTAs.size() << " input FASTA files out of " << input_FASTA_paths.size() << " paths provided." << endl;
    
    //Set up the vector to contain each line from the n FASTA files:
    vector<string> FASTA_lines;
@@ -515,7 +527,9 @@ int main(int argc, char **argv) {
 
    //Iterate over all of the FASTAs synchronously:
    vector<string> FASTA_headers;
+   FASTA_headers.reserve(input_FASTA_paths.size());
    vector<string> FASTA_sequences;
+   FASTA_sequences.reserve(input_FASTA_paths.size());
    while (readFASTAs(input_FASTAs, FASTA_lines)) {
       //Check if we're on a header line:
       bool all_header_lines = 1;

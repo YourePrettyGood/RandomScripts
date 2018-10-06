@@ -31,7 +31,7 @@ codingSitesByDegeneracy.pl - Identifies n-fold degenerate sites in a FASTA of CD
 
 =head1 SYNOPSIS
 
-CDStoGenomicIntervals.pl [options]
+codingSitesByDegeneracy.pl [options]
 
  Options:
   --help,-h,-?           Display this help documentation

@@ -368,9 +368,11 @@ Even broader, this calculates genome-wide heterozygosity and rate of fixed diffe
 
 ### `nonOverlappingWindows.cpp`
 
+**Version change:** As of version 1.2, nonOverlappingWindows automatically skips the first line if it is a header line (i.e. does not contain any numbers), and has an option to indicate which column of the file to use as a statistic column.
+
 Usage:
 
-`nonOverlappingWindows [-n] [-w window size in bp] [-i input TSV] [-o output TSV]`
+`nonOverlappingWindows [-n] [-w window size in bp] [-i input TSV] [-o output TSV] [-s stat column]`
 
 `-n` indicates whether or not the input TSV has a fourth column indicating whether or not to omit the current site (1=omit, 0=keep).
 
@@ -382,6 +384,8 @@ Usage:
 
 `-u` triggers the output of the fourth column, i.e. fraction of usable sites
 
+`-s` specifies the column to use for averaging the statistic. The default is column 3 (i.e. `3`), but can be any integer above 2 as long as it specifies a valid column.
+
 Example Usage:
 
 `listPolyDivSites -n -p Dyak_NY73PB_v2_w60.fasta CY01A.fasta | nonOverlappingWindows -n -w 100000 -o CY01A_poly_w100kb.tsv`
@@ -391,6 +395,8 @@ This program takes a TSV with 3 or 4 columns, and averages the values in the 3rd
 It was originally written to calculate windowed depth using the output of `samtools depth -aa`, but the input format is general enough that most if not all of my stats tools use it.
 
 ### `calculateDxy.cpp`
+
+**Version change:** As of version 2.2, you do not need to list the FASTAs as positional arguments, as the paths to the FASTAs are read from the populations metadata file. This makes for a substantially shorter command line.
 
 Among the many basic stats we might want to calculate, Dxy and Pi are pretty basic.  This program calculates both, given a TSV that maps FASTA filenames to population numbers, and a list of FASTA filenames as positional arguments. The output has a variable number of columns, dependent on the number of populations specified.  The first four columns will always be:
 
