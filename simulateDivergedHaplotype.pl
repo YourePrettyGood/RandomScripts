@@ -12,7 +12,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # simulateDivergedHaplotype.pl                                                             #
 # Usage:                                                                                   #
 #  simulateDivergedHaplotype.pl [-i reference FASTA] [-o output FASTA] [-n] [-g geom param]#
-#   <% divergence>                                                                         #
+#   [-s PRNG seed] <% divergence>                                                                         #
 #                                                                                          #
 # Arguments:                                                                               #
 #  -i,--input_haplotype         FASTA of the first haplotype to use as a reference for     #
@@ -25,6 +25,8 @@ Getopt::Long::Configure qw(gnu_getopt);
 #  -g,--indel_geom              Parameter value for the geometric distribution used to     #
 #                               model indel length distribution                            #
 #                               (optional, decimal between 0 and 1, default: 0.1)          #
+#  -s,--prng_seed               Seed integer for pseudorandom number generator             #
+#                               (optional, default: 42)                                    #
 #  % divergence                 Required parameter specifying the percent divergence       #
 #                               desired between the reference/input haplotype and the      #
 #                               new/output diverged haplotype                              #
@@ -39,10 +41,13 @@ Getopt::Long::Configure qw(gnu_getopt);
 #  SNPs and indels are distributed along scaffolds under a discrete uniform distribution   #
 #  Indel length is distributed under a geometric distribution with parameter 0.1 by default#
 #  This value was very qualitatively estimated from Rimmer et al. 2014 Nat. Gen. for humans#
+#                                                                                          #
+# Changelog:                                                                               #
+#  v1.1: Added PRNG seed argument so we can make reproducible runs                         #
 ############################################################################################
 
 my $SCRIPTNAME = "simulateDivergedHaplotype.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -69,7 +74,10 @@ simulateDivergedHaplotype.pl [options] <% divergence>
   --indel_geom,-g          Parameter value for the geometric distribution
                            used to model indel length distribution
                            (optional, decimal between 0 and 1, default: 0.1)
+  --prng_seed,-s           Seed for pseudorandom number generator
+                           (optional, integer, default: 42)
   --version,-v             Output version string
+  --debug,-d               Print extra debugging information
 
  Mandatory:
   % divergence             Required parameter specifying the percent
@@ -177,12 +185,14 @@ sub insertMutations($$$$$) {
 #Parse options:
 my $help = 0;
 my $man = 0;
+my $debug = 0;
 my $ref_path = '';
 my $out_path = '';
 my $indels = 0;
 my $indel_geometric_parameter = 0.1;
+my $prng_seed = 42;
 my $dispversion = 0;
-GetOptions('input_haplotype|i=s' => \$ref_path, 'output_haplotype|o=s' => \$out_path, 'indels|n' => \$indels, 'indel_geom|g=f' => \$indel_geometric_parameter, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_haplotype|i=s' => \$ref_path, 'output_haplotype|o=s' => \$out_path, 'indels|n' => \$indels, 'indel_geom|g=f' => \$indel_geometric_parameter, 'prng_seed|s=i' => \$prng_seed, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
 
@@ -219,21 +229,30 @@ $out_path =~ s/\.\w+(.gz)?$/_/;
 my $log_prefix = $out_path;
 my $SNP_log_path = $log_prefix . "SNPs.log";
 my $indel_log_path = $log_prefix . "indels.log";
-open SNPLOG, ">", $SNP_log_path or die "Failed to open output SNP log file $SNP_log_path due to error $!\n";
-open INDELLOG, ">", $indel_log_path or die "Failed to open output indel log file $indel_log_path due to error $!\n";
+my $snplog;
+my $indellog;
+open $snplog, ">", $SNP_log_path or die "Failed to open output SNP log file $SNP_log_path due to error $!\n";
+open $indellog, ">", $indel_log_path or die "Failed to open output indel log file $indel_log_path due to error $!\n";
+
+#Set the PRNG seed so we can reproduce this run:
+print STDERR "Using PRNG seed ${prng_seed}\n";
+srand($prng_seed);
 
 #SNP rate relative to indel rate:
 my $indel_rate_fold_lower = 25;
+print STDERR "Indel rate is ${indel_rate_fold_lower} times less than the SNP rate of ${percent_divergence} %\n" if $debug;
 #Iterate over the scaffolds:
 #Assumes FASTA is not line-wrapped
 my $scaffold_name = ""; #Keep track of the scaffold name
+#We can emit a warning if the FASTA seems line-wrapped by keeping track
+# of the line number for the header:
+my $line_num = 1;
 while (my $line = <$ref>) {
-   if ($line =~ />/) {
+   if ($line =~ /^>/) {
       print $out $line;
       $scaffold_name = $line;
       chomp $scaffold_name;
       $scaffold_name =~ s/>//;
-      next;
    } else {
       chomp $line;
       my %SNPs = ();
@@ -243,29 +262,36 @@ while (my $line = <$ref>) {
       #Simulate SNP and indel positions from a random discrete uniform distribution:
       %SNPs = %{sampleWithoutReplacement($scaffold_length-1, $num_SNPs)};
       %indels = %{sampleWithoutReplacement($scaffold_length-1, int($num_SNPs/$indel_rate_fold_lower))} if $indels != 0;
-      #Diagnostic:
-      print STDERR "Expecting to output ", scalar(keys %SNPs), " SNPs and ", scalar(keys %indels), " indels.\n";
-      #End diagnostic
+      print STDERR "Expecting to output ", scalar(keys %SNPs), " SNPs and ", scalar(keys %indels), " indels.\n" if $debug;
       #Output the desired mutated scaffold:
       my ($mutated_scaffold, $SNP_log_reference, $indel_log_reference) = insertMutations($divergence, $line, \%SNPs, \%indels, $indel_geometric_parameter);
       print $out $mutated_scaffold, "\n";
       #Output the SNP and indel logs:
       for my $SNP (@{$SNP_log_reference}) {
-         print SNPLOG $scaffold_name, "\t", $SNP, "\n";
+         print $snplog $scaffold_name, "\t", $SNP, "\n";
       }
       for my $indel (@{$indel_log_reference}) {
-         print INDELLOG $scaffold_name, "\t", $indel, "\n";
+         print $indellog $scaffold_name, "\t", $indel, "\n";
       }
-      #Diagnostic:
-      print STDERR "Really output ", scalar@{$SNP_log_reference}, " SNPs and ", scalar@{$indel_log_reference}, " indels.\n";
-      #End diagnostic
+      print STDERR "Really output ", scalar@{$SNP_log_reference}, " SNPs and ", scalar@{$indel_log_reference}, " indels.\n" if $debug;
    }
+   #If not line-wrapped, sequence lines should be even-numbered:
+   print STDERR "Line # ${line_num}\n" if $debug > 1;
+   print STDERR "Line # ${line_num} is a header line\n" if $debug > 1 and $line =~ /^>/;
+   if ($line !~ /^>/ and $line_num % 2 != 0) {
+      close $ref;
+      close $out;
+      close $snplog;
+      close $indellog;
+      die "It seems your input FASTA ${ref_path} is line-wrapped -- please unwrap it for use with this script.";
+   }
+   $line_num++;
 }
 
 #Close input and output files:
 close $ref;
 close $out;
-close SNPLOG;
-close INDELLOG;
+close $snplog;
+close $indellog;
 
 exit 0;
