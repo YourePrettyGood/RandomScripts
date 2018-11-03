@@ -251,7 +251,7 @@ int main(int argc, char **argv) {
       double local_statistic;
       bool omit_position = 0;
       scaffold_name = line_vector[0];
-      if (stat_column >= line_vector.size()) {
+      if (stat_column > line_vector.size()) {
          cerr << "Chosen statistic column " << to_string(stat_column) << " is not a valid column in your file." << endl;
          if (!use_cin) {
             input.close();
