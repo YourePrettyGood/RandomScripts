@@ -5,6 +5,7 @@
  * Version 1.1 written 2017/03/06 (Added base counts to debug output)       *
  * Version 1.2 written 2017/05/26 (Finally implemented inbred pi)           *
  * Version 1.3 written 2018/08/09 (Fixed bug ignoring softmasked bases)     *
+ * Version 1.4 written 2018/11/08 (Omit position may output weight instead) *
  *                                                                          *
  * Description:                                                             *
  *                                                                          *
@@ -25,13 +26,13 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "1.3"
+#define VERSION "1.4"
 
 //Define number of bases:
 #define NUM_BASES 4
 
 //Usage/help:
-#define USAGE "calculatePolymorphism\nUsage:\n calculatePolymorphism [options] [list of pseudoreference FASTAs]\n Options:\n  --help,-h:\t\tOutput this documentation\n  --version,-v:\t\tOutput the version number\n  --segregating_sites,-s:\tOutput whether or not the site is segregating\n  --inbred,-i:\t\tAssume inbred input sequences\n  --prng_seed,-p:\t\tSet pseudo-random number generator seed for allele choice if -i is set\n  --debug,-d:\t\tOutput extra debugging info\n"
+#define USAGE "calculatePolymorphism\nUsage:\n calculatePolymorphism [options] [list of pseudoreference FASTAs]\n Options:\n  --help,-h:\t\tOutput this documentation\n  --version,-v:\t\tOutput the version number\n  --segregating_sites,-s:\tOutput whether or not the site is segregating\n  --inbred,-i:\t\tAssume inbred input sequences\n  --prng_seed,-p:\t\tSet pseudo-random number generator seed for allele choice if -i is set\n  --usable_fraction,-u:\tFourth column represents fraction of unmasked bases\n  --debug,-d:\t\tOutput extra debugging info\n"
 
 using namespace std;
 
@@ -76,7 +77,7 @@ bool readFASTAs(vector<ifstream*> &input_FASTAs, vector<string> &FASTA_lines) {
    return ifstream_notfail;
 }
 
-void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, bool debug, bool segsites, bool inbred) {
+void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, bool debug, bool segsites, bool inbred, bool usable) {
    cerr << "Processing scaffold " << FASTA_headers[0].substr(1) << " of length " << FASTA_sequences[0].length() << endl;
    //Do all the processing for this scaffold:
    //Polymorphism estimator: Given base frequencies at site:
@@ -182,17 +183,26 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
             pi_hat += 2*p_hat[j]*p_hat[k];
          }
       }
+      double usable_fraction = (double)nonN_bases/(double)(nonN_bases+base_frequency[4]);
       if (nonN_bases <= 1) { //The estimator doesn't work for n <= 1, so make sure this base gets ignored by the windowing script
-         cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << 0 << '\t' << 1 << endl;
+         if (!usable) { // If we don't want to output the usable fraction, just output 1
+            cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "NA" << '\t' << 1 << endl;
+         } else {
+            cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "NA" << '\t' << usable_fraction << endl;
+         }
       } else {
          if (segsites) {
-            cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << (pi_hat > 0.0 ? 1 : 0) << '\t' << 0 << endl;
+            if (!usable) { // If we don't want to output the usable fraction, just output 1
+               cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << (pi_hat > 0.0 ? 1 : 0) << '\t' << 0 << endl;
+            } else {
+               cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << (pi_hat > 0.0 ? 1 : 0) << '\t' << usable_fraction << endl;
+            }
          } else {
             cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t';
-            if (nonN_bases < 2) {
-               cout << "NA" << '\t' << 1;
-            } else {
+            if (!usable) { // If we don't want to output the usable fraction, just output 1
                cout << (double)nonN_bases/(double)(nonN_bases-1)*pi_hat << '\t' << 0;
+            } else {
+               cout << (double)nonN_bases/(double)(nonN_bases-1)*pi_hat << '\t' << usable_fraction;
             }
             if (debug) {
                cout << '\t' << nonN_bases << '\t' << pi_hat;
@@ -218,6 +228,8 @@ int main(int argc, char **argv) {
    bool segsites = 0;
    //Seed for PRNG for choosing alleles at heterozygous sites in inbred strains:
    unsigned int prng_seed = 42;
+   //Option to output fraction of usable sites:
+   bool usable = 0;
    
    //Variables for getopt_long:
    int optchar;
@@ -228,12 +240,13 @@ int main(int argc, char **argv) {
       {"segregating_sites", no_argument, 0, 's'},
       {"inbred", no_argument, 0, 'i'},
       {"prng_seed", required_argument, 0, 'p'},
+      {"usable_fraction", no_argument, 0, 'u'},
       {"debug", no_argument, 0, 'd'},
       {"version", no_argument, 0, 'v'},
       {"help", no_argument, 0, 'h'}
    };
    //Read in the options:
-   while ((optchar = getopt_long(argc, argv, "sip:dvh", longoptions, &structindex)) > -1) {
+   while ((optchar = getopt_long(argc, argv, "sip:udvh", longoptions, &structindex)) > -1) {
       switch(optchar) {
          case 's':
             cerr << "Only outputting segregating sites, not polymorphism." << endl;
@@ -246,6 +259,10 @@ int main(int argc, char **argv) {
          case 'p':
             cerr << "Using PRNG seed " << optarg << " for choosing alleles in inbred lines." << endl;
             prng_seed = atoi(optarg);
+            break;
+         case 'u':
+            cerr << "Outputting fraction of usable sites rather than omit column" << endl;
+            usable = 1;
             break;
          case 'd':
             cerr << "Debugging mode enabled." << endl;
@@ -302,7 +319,7 @@ int main(int argc, char **argv) {
             cerr << "Completed reading scaffold " << FASTA_lines[0].substr(1) << endl;
          }
          if (!FASTA_sequences.empty()) {
-            processScaffold(FASTA_headers, FASTA_sequences, debug, segsites, inbred);
+            processScaffold(FASTA_headers, FASTA_sequences, debug, segsites, inbred, usable);
             FASTA_sequences.clear();
          }
          FASTA_headers = FASTA_lines;
@@ -346,7 +363,7 @@ int main(int argc, char **argv) {
       which_input_FASTA++;
    }
    //If no errors kicked us out of the while loop, process the last scaffold:
-   processScaffold(FASTA_headers, FASTA_sequences, debug, segsites, inbred);
+   processScaffold(FASTA_headers, FASTA_sequences, debug, segsites, inbred, usable);
    
    //Close the input FASTAs:
    closeFASTAs(input_FASTAs);

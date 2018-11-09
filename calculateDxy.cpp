@@ -4,6 +4,7 @@
  * Version 1.0 written 2017/01/29                                           *
  * Version 2.1 written 2017/05/30 (added shared polymorphism and inbred)    *
  * Version 2.2 written 2017/11/13 (no need for list of pseudorefs)          *
+ * Version 2.3 written 2018/11/08 (Omit position may output weight instead) *
  *                                                                          *
  * Description:                                                             *
  * This script takes in pseudoreference FASTAs and a TSV describing which   *
@@ -37,13 +38,13 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "2.2"
+#define VERSION "2.3"
 
 //Define number of bases:
 #define NUM_BASES 4
 
 //Usage/help:
-#define USAGE "calculateDxy\nUsage:\n calculateDxy [options]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n -s,--shared_poly\tIdentify shared polymorphisms between populations\n -i,--inbred\tTreat pseudoreferences as inbred haploids\n -r,--prng_seed\tSet PRNG seed for random allele selection in inbred lines\n\t\tDefault: 42\n"
+#define USAGE "calculateDxy\nUsage:\n calculateDxy [options]\nOptions:\n -h,--help\tPrint this help\n -v,--version\tPrint the version of this program\n -p,--popfile\tTSV file of FASTA name, and population number\n -s,--shared_poly\tIdentify shared polymorphisms between populations\n -i,--inbred\tTreat pseudoreferences as inbred haploids\n -r,--prng_seed\tSet PRNG seed for random allele selection in inbred lines\n\t\tDefault: 42\n --usable_fraction,-u:\tFourth column represents fraction of unmasked bases\n"
 
 using namespace std;
 
@@ -126,7 +127,7 @@ bool is_shared_poly(array<unsigned long, 6> &pop1_allele_counts, array<unsigned 
    return shared_poly > 1;
 }
 
-void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, map<unsigned long, unsigned long> &population_map, unsigned long num_populations, unordered_map<string, double> &memoized_pi, unordered_map<string, double> &memoized_dxy, bool shared_poly, bool inbred, bool debug) {
+void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequences, map<unsigned long, unsigned long> &population_map, unsigned long num_populations, unordered_map<string, double> &memoized_pi, unordered_map<string, double> &memoized_dxy, bool shared_poly, bool inbred, bool debug, bool usable) {
    cerr << "Processing scaffold " << FASTA_headers[0].substr(1) << " of length " << FASTA_sequences[0].length() << endl;
    //Do all the processing for this scaffold:
    //Polymorphism estimator: Given base frequencies at site:
@@ -263,8 +264,12 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
          cerr << "Estimating allele frequencies for site " << i+1 << "." << endl;
       }
       unsigned long population_index = 0;
+      unsigned long nonN_bases = 0;
+      unsigned long total_bases = 0;
       for (population_index = 0; population_index < num_populations; population_index++) {
          use_site = use_site && population_site_frequencies[population_index][5] >= 2;
+         nonN_bases += population_site_frequencies[population_index][5];
+         total_bases += population_site_frequencies[population_index][4] + population_site_frequencies[population_index][5];
          string pi_key = piKey(population_site_frequencies[population_index]);
          for (unsigned long j = 0; j < NUM_BASES; j++) {
             population_p_hats[population_index][j] = (double)population_site_frequencies[population_index][j]/(double)population_site_frequencies[population_index][5];
@@ -321,13 +326,19 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
             }
          }
       }
+
+      double usable_fraction = (double)nonN_bases/(double)total_bases;
       
       if (use_site) {
          //Output elements: Scaffold, position, D_{12}, omit site, pi_{i}, D_{ij}, D_{a} values
          cout << FASTA_headers[0].substr(1) << '\t' << i+1;
          population_index = 0;
          //Output D_{12} and omit_site:
-         cout << '\t' << D_xys[0] << '\t' << "0";
+         if (!usable) { //If we don't want to output the usable fraction, just output 0
+            cout << '\t' << D_xys[0] << '\t' << "0";
+         } else {
+            cout << '\t' << D_xys[0] << '\t' << usable_fraction;
+         }
          //Output \pi_{i} values:
          for (auto population_iterator = population_pi_hats.begin(); population_iterator != population_pi_hats.end(); ++population_iterator) {
             cout << '\t' << *population_iterator;
@@ -346,7 +357,11 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
          }
          cout << endl;
       } else { //Do not output any estimators for n < 2
-         cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "0" << '\t' << 1;
+         if (!usable) { //If we don't want to output the usable fraction, just output 1
+            cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "0" << '\t' << 1;
+         } else {
+            cout << FASTA_headers[0].substr(1) << '\t' << i+1 << '\t' << "0" << '\t' << usable_fraction;
+         }
          for (unsigned long j = 1; j <= num_populations; j++) {
             cout << '\t' << "0"; //Output 0 (NA)s for \pi_{i} values as well
          }
@@ -385,6 +400,9 @@ int main(int argc, char **argv) {
 
    //Option to output debugging info on STDERR
    bool debug = 0;
+
+   //Option to output fraction of usable sites:
+   bool usable = 0;
    
    //Variables for getopt_long:
    int optchar;
@@ -396,12 +414,13 @@ int main(int argc, char **argv) {
       {"shared_poly", no_argument, 0, 's'},
       {"inbred", no_argument, 0, 'i'},
       {"prng_seed", required_argument, 0, 'r'},
+      {"usable_fraction", no_argument, 0, 'u'},
       {"debug", no_argument, 0, 'd'},
       {"version", no_argument, 0, 'v'},
       {"help", no_argument, 0, 'h'}
    };
    //Read in the options:
-   while ((optchar = getopt_long(argc, argv, "p:sir:dvh", longoptions, &structindex)) > -1) {
+   while ((optchar = getopt_long(argc, argv, "p:sir:udvh", longoptions, &structindex)) > -1) {
       switch(optchar) {
          case 'p':
             cerr << "Using population TSV file " << optarg << endl;
@@ -418,6 +437,10 @@ int main(int argc, char **argv) {
          case 'r':
             cerr << "Setting PRNG seed to " << optarg << endl;
             prng_seed = atoi(optarg);
+            break;
+         case 'u':
+            cerr << "Outputting fraction of usable sites rather than omit column" << endl;
+            usable = 1;
             break;
          case 'd':
             cerr << "Outputting debug information." << endl;
@@ -438,10 +461,6 @@ int main(int argc, char **argv) {
             break;
       }
    }
-   //Read in the positional arguments:
-   //while (optind < argc) {
-   //   input_FASTA_paths.push_back(argv[optind++]);
-   //}
    
    //Set the seed of the PRNG:
    srand(prng_seed);
@@ -465,8 +484,6 @@ int main(int argc, char **argv) {
    while (getline(pop_file, popline)) {
       vector<string> line_vector;
       line_vector = splitString(popline, '\t');
-      //for (unsigned long i = 0; i < num_FASTAs; i++) {
-         //if (input_FASTA_paths[i] == line_vector[0]) {
       try {
          population_map[fasta_index++] = stoul(line_vector[1]);
       } catch (const invalid_argument& e) {
@@ -476,20 +493,19 @@ int main(int argc, char **argv) {
          return 9;
       }
       input_FASTA_paths.push_back(line_vector[0]);
-         //   break;
-         //}
-      //}
       populations.insert(stoul(line_vector[1]));
    }
    pop_file.close();
-   //unsigned long num_FASTAs = input_FASTA_paths.size();
    unsigned long num_populations = populations.size();
    if (debug) {
       cerr << "Read in " << num_populations << " populations." << endl;
    }
-   //populations.clear();
    //Output the header line:
-   cout << "Scaffold" << '\t' << "Position" << '\t' << "D_1,2" << '\t' << "omit_position";
+   if (!usable) {
+      cout << "Scaffold" << '\t' << "Position" << '\t' << "D_1,2" << '\t' << "omit_position";
+   } else {
+      cout << "Scaffold" << '\t' << "Position" << '\t' << "D_1,2" << '\t' << "site_weight";
+   }
    for (unsigned long i = 1; i <= num_populations; i++) {
       cout << '\t' << "pi_" << i;
    }
@@ -540,7 +556,7 @@ int main(int argc, char **argv) {
       }
       if (all_header_lines) {
          if (!FASTA_sequences.empty()) {
-            processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug);
+            processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug, usable);
             FASTA_sequences.clear();
          }
          FASTA_headers = FASTA_lines;
@@ -581,7 +597,7 @@ int main(int argc, char **argv) {
       which_input_FASTA++;
    }
    //If no errors kicked us out of the while loop, process the last scaffold:
-   processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug);
+   processScaffold(FASTA_headers, FASTA_sequences, population_map, num_populations, memoized_pi, memoized_dxy, shared_poly, inbred, debug, usable);
    
    //Close the input FASTAs:
    closeFASTAs(input_FASTAs);
