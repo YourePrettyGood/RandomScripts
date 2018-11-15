@@ -8,6 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 ################################################################
 #                                                              #
+# Version 1.1 (2018/11/15) Revcomp now works on IUPAC bases    #
 ################################################################
 
 #First pass script to construct a FASTA of CDSes from a GFF3 and
@@ -20,7 +21,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # (i.e. sorted order within a gene)
 
 my $SCRIPTNAME = "constructCDSesFromGFF3.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -47,6 +48,13 @@ corresponding genome annotation GFF3 file.  The output is in a FASTA-like
 format (no wrapping).
 
 =cut
+
+sub revcomp($) {
+   my $input_sequence = shift @_;
+   my $reverse_sequence = reverse $input_sequence; #Reverse
+   $reverse_sequence =~ tr/AaCcGgTtRrYySsWwKkMmBbDdHhVvNn/TtGgCcAaYyRrSsWwMmKkVvHhDdBbNn/; #Complement incl. IUPAC degenerate bases
+   return $reverse_sequence;
+}
 
 my $help = 0;
 my $man = 0;
@@ -133,13 +141,6 @@ while (my $line = <GFF>) {
 }
 
 close(GFF);
-
-sub revcomp($) {
-   my $input_sequence = shift @_;
-   my $reverse_sequence = reverse $input_sequence; #Reverse
-   $reverse_sequence =~ tr/ACGTNacgtn/TGCANtgcan/; #Complement
-   return $reverse_sequence;
-}
 
 #As extra output, we can output a CDS range string, which translates
 # between scaffold coordinate space and CDS coordinate space.

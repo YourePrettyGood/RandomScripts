@@ -11,6 +11,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # Version 1.1 (2017/02/23)                                                              #
 # Version 1.2 (2017/06/08) Added file option for config string                          #
 # Version 1.3 (2018/07/25) Added proper interpretation of N and U in AGP                #
+# Version 1.4 (2018/11/15) Added handling of IUPAC degenerate in revcomp                #
 # Description:                                                                          #
 # This script concatenates contigs together into a scaffold based on a configuration    #
 # string, separating contigs by 500 Ns.  The configuration string consists of contig    #
@@ -33,7 +34,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #########################################################################################
 
 my $SCRIPTNAME = "manualScaffold.pl";
-my $VERSION = "1.3";
+my $VERSION = "1.4";
 
 =pod
 
@@ -74,6 +75,13 @@ as per the AGP version 2.0 specification, rather than forcing N of 500 bp.
 Outputs the scaffolds to STDOUT.
 
 =cut
+
+sub revcomp($) {
+   my $input_sequence = shift @_;
+   my $reverse_sequence = reverse $input_sequence; #Reverse
+   $reverse_sequence =~ tr/AaCcGgTtRrYySsWwKkMmBbDdHhVvNn/TtGgCcAaYyRrSsWwMmKkVvHhDdBbNn/; #Complement incl. IUPAC degenerate bases
+   return $reverse_sequence;
+}
 
 my $display_version = 0;
 my $help = 0;
@@ -212,9 +220,7 @@ for my $scaffold (@scaffold_arr) {
          #Reverse complement the sequence, and save the revcomp:
          my $hashkey = substr $contig, 0, -1;
          $scaffolded_contigs{$hashkey} = 1;
-         my $complement = $contigs{$hashkey};
-         $complement =~ tr/ACGTNacgtn/TGCANtgcan/;
-         $scaffold_sequence .= reverse $complement;
+         $scaffold_sequence .= revcomp($contigs{$hashkey});
       } else {
          #Save the sequence:
          $scaffolded_contigs{$contig} = 1;

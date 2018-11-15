@@ -8,13 +8,14 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 ################################################################
 #                                                              #
+# Version 1.1 (2018/11/15) Abstracted revcomp to function      #
 ################################################################
 
 #First pass script to extract CDSes identified in a file resembling BED,
 # but with a fourth column identifying the protein to be extracted.
 
 my $SCRIPTNAME = "extractCDSfromVulgar.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -168,6 +169,13 @@ while (my $line = <GENOME>) {
 $scaffolds{$scaffold_name} = $scaffold_sequence;
 close(GENOME);
 
+sub revcomp($) {
+   my $input_sequence = shift @_;
+   my $reverse_sequence = reverse $input_sequence; #Reverse
+   $reverse_sequence =~ tr/AaCcGgTtRrYySsWwKkMmBbDdHhVvNn/TtGgCcAaYyRrSsWwMmKkVvHhDdBbNn/; #Complement incl. IUPAC degenerate bases
+   return $reverse_sequence;
+}
+
 sub printCDS($$$$$) {
    my $prot_id = shift @_;
    my $header_prefix = shift @_;
@@ -182,9 +190,7 @@ sub printCDS($$$$$) {
          $CDS .= uc($segment);
       } else { # - strand
          my $segment = substr $sequence, $end-1, $start-$end+1;
-         my $revcompseq = reverse uc($segment);
-         $revcompseq =~ tr/[ACGTRYSWKMBDHVN]/[TGCAYRSWMKVHDBN]/;
-         $CDS .= $revcompseq;
+         $CDS .= uc(revcomp($segment));
       }
    }
    print STDOUT ">", $header_prefix, "_", $prot_id, "\n", $CDS, "\n";
