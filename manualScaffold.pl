@@ -11,7 +11,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # Version 1.1 (2017/02/23)                                                              #
 # Version 1.2 (2017/06/08) Added file option for config string                          #
 # Version 1.3 (2018/07/25) Added proper interpretation of N and U in AGP                #
-# Version 1.4 (2018/11/15) Added handling of IUPAC degenerate in revcomp                #
+# Version 1.4 (2018/11/15) Handle of IUPAC bases in revcomp, and keep input contig order#
 # Description:                                                                          #
 # This script concatenates contigs together into a scaffold based on a configuration    #
 # string, separating contigs by 500 Ns.  The configuration string consists of contig    #
@@ -99,13 +99,14 @@ pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
+my $contigsfh;
 if ($input_path ne "STDIN") {
-   unless(open(CONTIGS, "<", $input_path)) {
+   unless(open($contigsfh, "<", $input_path)) {
       print STDERR "Error opening input contigs FASTA file.\n";
       exit 2;
    }
 } else {
-   open(CONTIGS, "<&", "STDIN"); #Duplicate the file handle for STDIN to CONTIGS so we can seamlessly handle piping
+   open($contigsfh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $contigsfh so we can seamlessly handle piping
 }
 
 my %scaffold_gaps = (); #Store gaps between contigs from AGP
@@ -114,11 +115,13 @@ my $default_gap_size = 500;
 if ($agp_file eq "") {
    if (scalar @ARGV < 1) { #Not enough mandatory arguments
       if ($config_string_file ne "") {
-         unless(open(CONFIGSTR, "<", $config_string_file)) {
+         my $configstrfh;
+         unless(open($configstrfh, "<", $config_string_file)) {
             print STDERR "Error opening long configuration string file ${config_string_file}.\n";
             exit 4;
          }
-         $config_string = <CONFIGSTR>;
+         $config_string = <$configstrfh>;
+         close($configstrfh);
       } else {
          print STDERR "Missing Configuration String.\n";
          exit 3;
@@ -128,7 +131,8 @@ if ($agp_file eq "") {
    }
 } else {
    $default_gap_size = 100; #AGP 2.0 says U records get 100 bp gaps
-   unless(open(AGP, "<", $agp_file)) {
+   my $agpfh;
+   unless(open($agpfh, "<", $agp_file)) {
       print STDERR "Error opening input AGP file.\n";
       exit 4;
    }
@@ -136,7 +140,7 @@ if ($agp_file eq "") {
    my @chroms = ();
    my %confighash = ();
    my $prev_contig = "";
-   while (my $line = <AGP>) {
+   while (my $line = <$agpfh>) {
       chomp $line;
       next if $line =~ /^#/;
       my @line_elements = split /\t/, $line;
@@ -169,19 +173,21 @@ if ($agp_file eq "") {
       $output .= $confighash{$chrom};
    }
    $config_string = $output;
-   close(AGP);
+   close($agpfh);
 }
 
 chomp $config_string;
 
 #Read in all the contigs (temporary solution):
+my @contigorder = ();
 my %contigs = ();
 my ($header, $sequence) = ('', '');
-while (my $line = <CONTIGS>) {
+while (my $line = <$contigsfh>) {
    chomp $line;
    #Put the contig in the hash if we've reached the next contig:
    if ($header ne '' and $line =~ />/) {
       $contigs{$header} = $sequence;
+      push @contigorder, $header;
       ($header, $sequence) = ('', '');
    }
    #Fill up the header and sequence variables if we haven't reached the next contig:
@@ -198,11 +204,12 @@ while (my $line = <CONTIGS>) {
 #Add the final contig into the hash, if it exists:
 if ($header ne '' and $sequence ne '') {
    $contigs{$header} = $sequence;
+   push @contigorder, $header;
    ($header, $sequence) = ('', '');
 }
 #Close the input file if it was indeed opened:
 if ($input_path ne "STDIN") {
-   close(CONTIGS);
+   close($contigsfh);
 }
 #Keep track of the unscaffolded contigs if asked to:
 my %scaffolded_contigs = ();
@@ -232,10 +239,12 @@ for my $scaffold (@scaffold_arr) {
    print STDOUT ">${prefix}\n${scaffold_sequence}\n";
 }
 
+my @unscaffolded_order = grep { !exists($scaffolded_contigs{$_}) } @contigorder;
+
 #Output the unscaffolded contigs if asked:
 if ($unscaffolded != 0) {
-   for my $key (keys %contigs) {
-      print STDOUT ">${key}\n", $contigs{$key}, "\n" unless exists($scaffolded_contigs{$key});
+   for my $key (@unscaffolded_order) {
+      print STDOUT ">${key}\n", $contigs{$key}, "\n";
    }
 }
 
