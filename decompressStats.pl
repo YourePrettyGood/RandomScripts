@@ -6,16 +6,17 @@ use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 
-################################################################
-#                                                              #
-################################################################
+###############################################################################
+#                                                                             #
+# Version 1.1 (2018/11/22) Usable fraction for col. 4 (compatibility)         #
+###############################################################################
 
 #Add records for sites not output by other programs
 #For example, sites not covered by 1:1 LAST alignments are
 #not output by divergenceFromMAF.pl
 
 my $SCRIPTNAME = "decompressStats.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -32,6 +33,7 @@ decompressStats.pl [options]
   --input_stats,-i      Path to input stats file (default: STDIN)
   --fai,-f              Path to FASTA index for genome assembly
   --stat_column,-s      Which column contains the statistic? (default: 3)
+  --usable_fraction,-u  Output usable fraction instead of omit as col. 4
   --debug,-d            Output debugging information to STDERR
   --version,-v          Display the version string
 
@@ -88,9 +90,10 @@ my $man = 0;
 my $stats_path = "STDIN";
 my $fai_path = "";
 my $stat_column = 3;
+my $usable_fraction = 0;
 my $debug = 0;
 my $dispversion = 0;
-GetOptions('input_stats|i=s' => \$stats_path, 'fai|f=s' => \$fai_path, 'stat_column|s=i' => \$stat_column, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_stats|i=s' => \$stats_path, 'fai|f=s' => \$fai_path, 'stat_column|s=i' => \$stat_column, 'usable_fraction|u' => \$usable_fraction, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
@@ -162,12 +165,12 @@ while (my $line = <$stats_fh>) {
    if ($scaffold ne $prev_scaffold and $prev_scaffold ne "") {
       print STDERR "Done processing scaffold ${prev_scaffold}\n" if $debug;
       while ($scaffold_offset{$prev_scaffold} <= $scaffold_length{$prev_scaffold}) {
-         print STDOUT join("\t", $prev_scaffold, $scaffold_offset{$prev_scaffold}, 0, 1), $empty_extra_columns, "\n";
+         print STDOUT join("\t", $prev_scaffold, $scaffold_offset{$prev_scaffold}, 0, 1-$usable_fraction), $empty_extra_columns, "\n";
          $scaffold_offset{$prev_scaffold}++;
       }
    }
    while ($scaffold_offset{$scaffold} < $position) {
-      print STDOUT join("\t", $scaffold, $scaffold_offset{$scaffold}, 0, 1), $empty_extra_columns, "\n";
+      print STDOUT join("\t", $scaffold, $scaffold_offset{$scaffold}, 0, 1-$usable_fraction), $empty_extra_columns, "\n";
       $scaffold_offset{$scaffold}++;
    }
    print STDOUT $line, "\n";
@@ -180,7 +183,7 @@ close($stats_fh);
 #Fill out the last scaffold if necessary:
 print STDERR "Filling in missing records for the last scaffold\n" if $debug;
 while ($scaffold_offset{$prev_scaffold} <= $scaffold_length{$prev_scaffold}) {
-   print STDOUT join("\t", $prev_scaffold, $scaffold_offset{$prev_scaffold}, 0, 1), $empty_extra_columns, "\n";
+   print STDOUT join("\t", $prev_scaffold, $scaffold_offset{$prev_scaffold}, 0, 1-$usable_fraction), $empty_extra_columns, "\n";
    $scaffold_offset{$prev_scaffold}++;
 }
 
@@ -189,7 +192,7 @@ print STDERR "Filling in missing records for omitted scaffolds\n" if $debug;
 for my $scaffold (keys %scaffold_length) {
    unless (exists($used_scaffolds{$scaffold})) {
       while ($scaffold_offset{$scaffold} <= $scaffold_length{$scaffold}) {
-         print STDOUT join("\t", $scaffold, $scaffold_offset{$scaffold}, 0, 1), $empty_extra_columns, "\n";
+         print STDOUT join("\t", $scaffold, $scaffold_offset{$scaffold}, 0, 1-$usable_fraction), $empty_extra_columns, "\n";
          $scaffold_offset{$scaffold}++;
       }
    }
