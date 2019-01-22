@@ -36,6 +36,7 @@ my $VERSION = "1.1";
 
 #Changelog:
 #1.1 (2019/01/22) Small fix to append _0 or _1 to header based on which haplotype was selected
+#                 Plus another fix to address lowercase characters in input
 
 =pod
 
@@ -80,7 +81,7 @@ sub splitHaplotype($$) {
    
    #Iterate over the bases in the sequence, and split randomly at heterozygous
    # sites (do not change homozygous sites or ambiguous sites):
-   my @bases = split //, $line;
+   my @bases = split //, uc($line);
    my $seq_length = scalar(@bases);
    for (my $i = 0; $i < $seq_length; $i++) {
       if ($bases[$i] !~ /[ACGTBDHVN.-]/) {
