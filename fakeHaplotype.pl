@@ -21,8 +21,10 @@ Getopt::Long::Configure qw(gnu_getopt);
 #  -s,--prng_seed           Seed for the PRNG used for splitting     #
 #                           (optional, defaults to 42)               #
 #                                                                    #
-#  --alt_haplotype,-f       Output the other haplotype of the pair   #
+#  --alt_haplotype,-a       Output the other haplotype of the pair   #
 #                           (flag, make sure to match the PRNG seed) #
+#  --haplotype_suffix,-b    Append a suffix to the header indicating #
+#                           which haplotype was used                 #
 # Description:                                                       #
 #  fakeHaplotype.pl produces a fake haplotype from a degenerated     #
 #  FASTA based on randomly splitting alleles at each heterozygous    #
@@ -30,7 +32,10 @@ Getopt::Long::Configure qw(gnu_getopt);
 ######################################################################
 
 my $SCRIPTNAME = "fakeHaplotype.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
+
+#Changelog:
+#1.1 (2019/01/22) Small fix to append _0 or _1 to header based on which haplotype was selected
 
 =pod
 
@@ -43,16 +48,18 @@ fakeHaplotype.pl - Extract a fake haplotype from a degenerated FASTA
 fakeHaplotype.pl [options]
 
  Options:
-  --help,-h,-?         Display this help documentation
-  --input_FASTA,-i     Input FASTA of degenerate sequences to split
-                       (optional, default: STDIN)
-  --output_FASTA,-o    Output FASTA of one randomly-split haplotype
-                       (optional, default: STDOUT)
-  --prng_seed,-s       Seed to use for PRNG for splitting het sites
-                       (optional, default: 42)
-  --alt_haplotype,-a   Output the other haplotype of the pair
-                       (flag, make sure to match the PRNG seed)
-  --version,-v         Output version string
+  --help,-h,-?           Display this help documentation
+  --input_FASTA,-i       Input FASTA of degenerate sequences to split
+                         (optional, default: STDIN)
+  --output_FASTA,-o      Output FASTA of one randomly-split haplotype
+                         (optional, default: STDOUT)
+  --prng_seed,-s         Seed to use for PRNG for splitting het sites
+                         (optional, default: 42)
+  --alt_haplotype,-a     Output the other haplotype of the pair
+                         (flag, make sure to match the PRNG seed)
+  --haplotype_suffix,-b  Append a suffix to the header indicating
+                         which haplotype was used
+  --version,-v           Output version string
 
 =head1 DESCRIPTION
 
@@ -90,21 +97,25 @@ sub splitHaplotype($$) {
 #Parse options:
 my $help = 0;
 my $man = 0;
+my $debug = 0;
 my $in_path = '';
 my $out_path = '';
 my $prng_seed = 42;
 my $which_haplotype = 0;
+my $haplotype_suffix = 0;
 my $dispversion = 0;
-GetOptions('input_FASTA|i=s' => \$in_path, 'output_FASTA|o=s' => \$out_path, 'prng_seed|s=i' => \$prng_seed, 'alt_haplotype|a' => \$which_haplotype, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_FASTA|i=s' => \$in_path, 'output_FASTA|o=s' => \$out_path, 'prng_seed|s=i' => \$prng_seed, 'alt_haplotype|a' => \$which_haplotype, 'haplotype_suffix|b' => \$haplotype_suffix, 'version|v' => \$dispversion, 'help|h|?+' => \$help, 'debug|d+' => \$debug, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
+print STDERR "Initializing PRNG with seed ${prng_seed}\n" if $debug;
 srand($prng_seed);
 
 #Open input and output files:
+print STDERR "Opening input and output file handles\n" if $debug;
 my ($in, $out);
 if ($in_path =~ /\.gz$/) {
    $in = new IO::Uncompress::Gunzip $in_path or die "Failed to open Gzipped input FASTA file $in_path due to error $GunzipError\n";
@@ -122,11 +133,15 @@ if ($out_path =~ /\.gz$/) {
 }
 
 #Iterate over the scaffolds:
-#Assumes FASTA is not line-wrapped
+print STDERR "Iterating over scaffolds of input FASTA\n" if $debug;
 my $scaffold_name = ""; #Keep track of the scaffold name
 while (my $line = <$in>) {
    if ($line =~ />/) {
+      chomp $line;
+      $line .= "_${which_haplotype}" if $haplotype_suffix; #Append _0 or _1, depending on which haplotype is being output, may in the future consider adding seed here too
+      $line .= "\n";
       print $out $line;
+      print STDERR "Splitting haplotype for record ${line}" if $debug > 1;
       next;
    } else {
       chomp $line;
