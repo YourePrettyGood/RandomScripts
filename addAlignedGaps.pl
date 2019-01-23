@@ -8,6 +8,9 @@ use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 
+#Diagnostics:
+use Data::Dumper qw(Dumper);
+
 ######################################################################
 # addAlignedGaps.pl                                                  #
 # Usage:                                                             #
@@ -80,13 +83,23 @@ prefixes in the unaligned FASTA headers.
 =cut
 
 sub gapPositions($) {
+#Run-length encode the gaps so that inserting terminal gaps is possible
+# with splice()
    my $seq = shift @_;
-   my @gap_positions = ();
+   my @gap_positions = ([0,0]); #This is actually an array of arrays, RLE
    my @bases = split //, $seq;
    my $seqlen = scalar(@bases);
    for (my $i = 0; $i < $seqlen; $i++) {
       if ($bases[$i] eq "-") {
-         push @gap_positions, $i;
+         if ($gap_positions[$#gap_positions][0]+$gap_positions[$#gap_positions][1] == $i) {
+         #Extend the previous gap by one:
+            my @revised_gap = @{$gap_positions[$#gap_positions]};
+            $revised_gap[1]++;
+            splice(@gap_positions, $#gap_positions, 1, \@revised_gap);
+         } else {
+         #Create a new gap of length 1:
+            push @gap_positions, [$i, 1];
+         }
       }
    }
    return \@gap_positions;
@@ -103,12 +116,11 @@ sub addGaps($$$) {
       print STDERR "Species ${species} found in unaligned FASTA but not in alignment\n";
       return undef;
    }
-   my @gapped_sequence = split //, $seq; #We're going to splice in gaps backwards
-   my $gap_index = $#gap_sequence;
-   while ($gap_index >= 0) {
-      splice(@gapped_sequence, $gapped_sequence[$gap_index], 0, '-');
-      #TODO: Might be somewhat faster to RLE the gap sequences
-      $gap_index--;
+   my @gapped_sequence = split //, $seq; #We're going to splice in gaps *forwards*
+   #Why forwards? Because our RLE is *in* aligned coordinate space, not unaligned coordinate space
+   for (my $i = 0; $i <= $#gap_sequence; $i++) {
+      print STDERR "splice will give warning for ", $gap_sequence[$i][0], " gap of length ", $gap_sequence[$i][1], " because array is of size ", scalar(@gapped_sequence), "\n" if $gap_sequence[$i][0] > scalar(@gapped_sequence);
+      splice(@gapped_sequence, $gap_sequence[$i][0], 0, ('-')x$gap_sequence[$i][1]);
    }
    return join("", @gapped_sequence);
 }
@@ -154,9 +166,11 @@ while (my $line = <$aln>) {
    if ($line =~ /^>/) { #Header line
       if ($gap_sequence ne "" and $species ne "") {
          $gap_sequences{$species} = gapPositions($gap_sequence);
+         print STDERR "${species}\n" if $debug > 1;
+         print STDERR Dumper $gap_sequences{$species} if $debug > 1;
          $gap_sequence = "";
       }
-      if ($line =~ /^>([A-Za-z0-9]+)_/) {
+      if ($line =~ /^>([A-Za-z0-9.-]+)_/) {
          $species = $1; #Store the species name/ID via regex capture
       } else {
          print STDERR "Unable to detect an appropriate species name in FASTA header ${line}\nExpecting alphanumeric sequence before _\n";
@@ -170,7 +184,9 @@ while (my $line = <$aln>) {
    }
 }
 if ($gap_sequence ne "" and $species ne "") {
-   @{$gap_sequences{$species}} = gapPositions($gap_sequence);
+   $gap_sequences{$species} = gapPositions($gap_sequence);
+   print STDERR "${species}\n" if $debug > 1;
+   print STDERR Dumper $gap_sequences{$species} if $debug > 1;
    $gap_sequence = "";
 }
 close $aln;
@@ -199,6 +215,8 @@ while (my $line = <$in>) {
             close $out;
             exit 5;
          }
+         print STDERR $species, "\n" if $debug > 1;
+         print STDERR Dumper $gap_sequences{$species} if $debug > 1;
          print $out $gapped_sequence, "\n";
          $sequence = "";
       }
@@ -224,6 +242,8 @@ if ($sequence ne "" and $species ne "") {
       close $out;
       exit 5;
    }
+   print STDERR $species, "\n" if $debug > 1;
+   print STDERR Dumper $gap_sequences{$species} if $debug > 1;
    print $out $gapped_sequence, "\n";
    $sequence = "";
 }
