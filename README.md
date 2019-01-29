@@ -1,13 +1,14 @@
 # RandomScripts
 Collection of arbitrary (perhaps useful) programs and scripts, and occasional one-liners
 
-Most scripts that I've written have a `-h` option, so take a look, and let me know if anything is unclear!
+Most scripts that I've written have a `-h` option, so take a look, and let me know if anything is unclear! (Awk scripts here do not have any flags, though)
 
 ## Categories
 1. [De novo assembly-related](README.md#de-novo-assembly-related-scripts)
-2. [Annotation-related](README.md#annotation-related-scripts)
-3. [Genome-wide statistics](README.md#genome-wide-statistics-programsscripts)
-4. [Illumina data parsing](README.md#illumina-data-parsing-scripts)
+1. [Annotation-related](README.md#annotation-related-scripts)
+1. [Genome-wide statistics](README.md#genome-wide-statistics-programsscripts)
+1. [MSA-related](README.md#msa-related-scripts)
+1. [Illumina data parsing](README.md#illumina-data-parsing-scripts)
 
 ## Scripts that are not mine:
 1. `barcode_splitter.py`
@@ -210,6 +211,36 @@ Example Usage:
 
 This script takes in a BED file of intervals you find interesting, and a GFF of features.  It then extracts lines of the GFF that overlap your intervals, and outputs a modified set of GFF lines.  I used this as a preliminary way to screen for genes within tracts of IBD common between multiple white monarchs.
 
+### `fillMissingGenes.awk`
+
+This awk script takes a GFF3 file produced by gtf2gff.pl (from Augustus, tested with Augustus version 3.3), and fills in any missing `gene` and `mRNA` records, which happens surprisingly often. This script has primarily been used in the process of converting the `augustus.hints.gtf` file produced by the BRAKER2 (v2.1.0) pipeline into a specification-compliant GFF3.
+
+Example Usage:
+
+`cat <(awk 'BEGIN{print "##gff-version 3";}{print "##sequence-region "$1" 1 "$2;}' Dsim_w501_Pilon_chromosome_arms_mtDNA_softmasked_w60.fasta.fai) <(fillMissingGenes.awk Dsim_w501_BRAKER2_RNAseq_DmelProteins.gff3) > Dsim_w501_BRAKER2_RNAseq_DmelProteins_adjusted.gff3`
+
+(Note that the first awk command in the example is simply adding in the appropriate sequence-region header lines based on the FASTA index file, as well as the GFF version header.)
+
+The resultant GFF3 (with GFF version and sequence-region headers) should now be compatible with GenomeTools' sorting algorithm, like so:
+
+`gt gff3 -sort -tidy -retainids -checkids Dsim_w501_BRAKER2_RNAseq_DmelProteins_adjusted.gff3 2> Dsim_w501_BRAKER2_RNAseq_DmelProteins_adjusted_sorting.stderr > Dsim_w501_BRAKER2_RNAseq_DmelProteins_adjusted_sorted.gff3`
+
+The command used to generate the `Dsim_w501_BRAKER2_RNAseq_DmelProteins.gff3` input file was:
+
+`awk 'BEGIN{FS="\t";OFS="\t";}$2=="AUGUSTUS"{if ($3 == "transcript") {split($9, genetxarr, "."); $9="gene_id \""genetxarr[1]"\"; transcript_id \""$9"\";";}; print $0;}' braker/Dsim_w501_BRAKER2/augustus.hints.gtf | ~/bin/augustus-3.3/augustus/scripts/gtf2gff.pl --printExon --gff3 --out=Dsim_w501_BRAKER2_RNAseq_DmelProteins.gff3 2> Dsim_w501_BRAKER2_RNAseq_DmelProteins_gtf2gff.stderr`
+
+### `amendTrinotateKEGG.pl`
+
+This Perl script takes in a Trinotate XLS report file, and uses the REST API for KEGG to create a GOseq-compatible file of KO pathways for each transcript in the Trinotate report. If you already have the GOseq-compatible list of KOs for each transcript, you can use the `-g` argument to pass this in, and the script will output a gene-level version of the same file (combining the lists for alternative isoforms) without accessing the KEGG REST API.
+
+Since this takes advantage of the KEGG REST API, please don't use it too often, as KEGG is kindly providing this resource to us, so we don't want to cause them trouble.
+
+### `getKEGGdescriptions.pl`
+
+This Perl script takes the output of `amendTrinotateKEGG.pl` and uses the KEGG REST API to produce a TSV of KO pathway IDs and their associated descriptions.
+
+Since this takes advantage of the KEGG REST API, please don't use it too often, as KEGG is kindly providing this resource to us, so we don't want to cause them trouble.
+
 ### `constructCDSesFromGFF3.pl`
 
 Usage:
@@ -403,7 +434,7 @@ Among the many basic stats we might want to calculate, Dxy and Pi are pretty bas
 1. Scaffold ID
 2. Position
 3. Dxy between populations 1 and 2
-4. Whether this site should be omitted
+4. Whether this site should be omitted (or, with the `-u`, is the fraction of usable sequences at that position)
 
 The remaining columns are Dxy and Pi for the various combinations of populations.
 
@@ -417,11 +448,23 @@ Pi\_{x} = \frac{n}{n-1} \sum\_{i < j} 2\*p\_{x,i}\*p\_{x,j}
 
 These are no longer exclusively for biallelic sites, but do reduce to the biallelic site formulae when i and j are constrained to 1 and 2.  Also, I haven't actually written out the proof yet, but I'm pretty sure that averaging the per-base values across a window is exactly equivalent to the Dxy and Pi you would calculate using Nei's formulae.
 
+`n` in these formulae is the haploid sample size, and we assume that diploid sequences are provided (heterozygous sites identified by IUPAC degenerate bases K, M, R, S, W, and Y. Thus, without the `-i` flag, `n` is 2 times the number of input sequences.
+
+The `-i` flag indicates that only 1 allele per site per input FASTA should be counted in the allele frequencies. The allele is chosen at random for each input sequence at each site (the `-r` argument sets the PRNG seed), and the `n` in the above formulae is equal to the number of input sequences. This is appropriate for calculations based on inbred or partially inbred individuals.
+
 Note that you have to omit the first line (a header) in order to pass the output to `nonOverlappingWindows`.  Also, if you want to take the windowed average of something other than D12, you'll need to pipe the output through a quick awk script, e.g. to average windows of the 6th column:
 
-`calculateDxy -p [population map TSV] [FASTA 1] [FASTA 2] [FASTA 3] [...] | awk 'NR>1{print $1"\t"$2"\t"$6"\t"$4;}' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
+Further note: Versions 2.2 and up of `nonOverlappingWindows` will automatically skip the above-mentioned header line, and have the `-s` argument for selecting which column has the statistic of interest.
 
-TODO: Eliminate the need to list FASTAs as positional arguments, and just read them in from the population map TSV.
+`calculateDxy -p [population map TSV] | awk 'NR>1{print $1"\t"$2"\t"$6"\t"$4;}' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
+
+or in newer versions:
+
+`calculateDxy -p [population map TSV] | nonOverlappingWindows -s 6 -n -w [window size in bp] -o [output TSV filename]`
+
+The usable fraction of sequences can be used as a filter for the windowed averaging, e.g. for a weighted average, using the usable fraction as the weight for a site (the `-a` flag for `nonOverlappingWindows`):
+
+`calculateDxy -p [population map TSV] -u | nonOverlappingWindows -a -w [window size in bp] -o [output TSV filename]`
 
 ### `calculatePolymorphism.cpp`
 
@@ -430,15 +473,29 @@ This program calculates pi given a list of FASTA filenames as positional argumen
 1. Scaffold ID
 2. Position
 3. Pi within the samples
-4. Whether this site should be omitted
+4. Whether this site should be omitted (or, with the `-u`, is the fraction of usable sequences at that position)
 
 Pi is calculated as in calculateDxy.
 
 These are no longer exclusively for biallelic sites, but do reduce to the biallelic site formulae when i and j are constrained to 1 and 2.  Also, I haven't actually written out the proof yet, but I'm pretty sure that averaging the per-base values across a window is exactly equivalent to the Dxy and Pi you would calculate using Nei's formulae.
 
+`n` in these formulae is the haploid sample size, and we assume that diploid sequences are provided (heterozygous sites identified by IUPAC degenerate bases K, M, R, S, W, and Y. Thus, without the `-i` flag, `n` is 2 times the number of input sequences.
+
+The `-i` flag indicates that only 1 allele per site per input FASTA should be counted in the allele frequencies. The allele is chosen at random for each input sequence at each site (the `-r` argument sets the PRNG seed), and the `n` in the above formulae is equal to the number of input sequences. This is appropriate for calculations based on inbred or partially inbred individuals.
+
+The `-s` flag causes the program to output a 1 if the site is segregating (i.e. pi > 0.0), and a 0 if not. This is the simple logical extension of `listPolyDivSites -p` to multiple samples, and can be used to evaluate Watterson's estimate of theta (you can calculate the number of segregating sites, S, sometimes denoted k, quickly from the output).
+
 Note that you have to omit the first line (a header) in order to pass the output to `nonOverlappingWindows`, e.g. using `tail -n+2` or awk, as follows:
 
+Further note: Versions 2.2 and up of `nonOverlappingWindows` will automatically skip the above-mentioned header line, and have the `-s` argument for selecting which column has the statistic of interest.
+
 `calculatePolymorphism [FASTA 1] [FASTA 2] [FASTA 3] [...] | awk 'NR>1' | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
+
+or with newer versions of `nonOverlappingWindows`:
+
+`calculatePolymorphism [FASTA 1] [FASTA 2] [FASTA 3] [...] | nonOverlappingWindows -n -w [window size in bp] -o [output TSV filename]`
+
+In the degenerate case of inputting a single FASTA, this program behaves like `listPolyDivSites -p -n`, outputting 1 for heterozygous sites, 0 for all others.
 
 ### `subsetVCFstats.pl`
 
@@ -497,6 +554,52 @@ The contiguity of the output depends on the contiguity of the alignment blocks, 
 Example Usage:
 
 `divergenceFromMAF.pl `
+
+## MSA-related scripts:
+
+These scripts are related to pre-processing (and post-processing) multiple sequence alignments of coding sequences. They have been used as part of a pipeline to generate MSAs of about 9,400 single-copy orthologs across Dmel, Dsan, Dtei, and Dyak, and to integrate population resequencing data into these alignments.
+
+### `addAlignedGaps.pl`
+
+This Perl script takes in an aligned set of CDSes from reference genomes (aligned by, say, PRANK, and provided in aligned multi-FASTA format via the `-a` argument), and an unaligned multi-FASTA of population sample CDSes (provided with the `-i` argument, or on STDIN), matches up the species prefix in their FASTA headers (e.g. `>Dsan_` in the ref alignment would match to `>Dsan_` in the population samples), and inserts gaps into the population sample sequences to align them. We perform no optimization of the MSA, simply assume that the alignment of the references is correct, and add the population samples to the output alignment (file specified by flag `-o`, or STDOUT by default). This is FAR FAR faster than inserting all the unaligned reference and population sample sequences into an MSA program, without losing much information, especially for relatively low distance alignments.
+
+Example Usage:
+
+`addAlignedGaps.pl -a trimmed_aligned_refs/OG0001492_prank.best.fas -i trimmed_unaligned_samples/OG0001492_trimmed.fasta -o trimmed_aligned_all/OG0001492_untrimmed.fasta`
+
+Note: I usually make sure the input FASTAs are unwrapped, but the code should work for arbitrary line-wrapping.  I just haven't tested it thoroughly.
+
+### `fakeHaplotype.pl`
+
+This Perl script takes in a diploid pseudoreference FASTA (e.g. produced by the [PseudoreferencePipeline](https://github.com/YourePrettyGood/PseudoreferencePipeline/)) and randomly selects alleles at heterozygous sites to produce a haploid version of the input. The pseudo-random number generator (PRNG) seed can be set with the `-s` option (default: 42, because starting with the answer is better), and the `-a` flag allows you to choose the opposite allele, so you can run this script twice to produce the complementary two possible haploids from the input diploid. If you are splitting into both haplotypes, it is recommended to use the `-b` flag so that you can distinguish the fake haplotypes were you to concatenate the two outputs. The `-b` flag appends a `_0` or `_1` to the header of each sequence, `_0` if the `-a` flag is absent, `_1` if the `-a` flag is present. So this allows for safe splitting of haplotypes for non-haplotype-aware statistics from an outbred individual (or a synthetic diploid), and random selection of a haplotype from inbred individuals (make sure to only use one of the haplotypes, since the individual's ploidy is effectively less than 2).
+
+Example Usage:
+
+`cat <(fakeHaplotype.pl -i raw_CDSes_samples/OG0001492_unwrapped.fasta -b) <(fakeHaplotype.pl -i raw_CDSes_samples/OG0001492_unwrapped.fasta -a -b) | trimCDSes.awk > trimmed_unaligned_samples/OG0001492_trimmed.fasta`
+
+This script is agnostic of line-wrapping, and will output in the same wrapping as the input.
+
+### `skipRogers.awk`
+
+This awk script is very very custom, and all it does is omit one of the two fake haplotypes from the Rogers et al. (2014) MBE Dyak data from the input alignment, and outputs all other sequences.
+
+### `trimCDSes.awk`
+
+This awk script takes in an unaligned set of CDSes (for example, extracted from reference assemblies, and organized into a single FASTA file per single-copy orthogroup, as identified by OrthoFinder analysis), trims them down to length that is an integral multiple of 3, and then removes a single terminal (i.e. 3'-most) stop codon, if detected, from each sequence. At the moment, only the stop codons in the NCBI transl_table=1 genetic code are detected.
+
+Example Usage:
+
+`trimCDSes.awk raw_CDSes_refs/OG0001492_unwrapped.fasta > trimmed_unaligned_refs/OG0001492_trimmed.fasta`
+
+The script is extremely short and quick, enabling extreme parallelization with GNU Parallel.
+
+### `trimAlignment.awk`
+
+This awk script takes in an aligned FASTA, and truncates all sequences down to the same length as the shortest sequence in the set. For the output of a typical MSA program (e.g. Clustal Omega, MUSCLE, MAFFT, PRANK), this should amount to not doing anything to the input, but this script is useful when you use an alignment of reference sequences as a guide for inserting population samples into the alignment, and the population samples happen to have differing lengths. In particular, I wrote it for use with `addAlignedGaps.pl`, where a masked pseudoreference trimmed by `trimCDSes.awk` may not truncate the terminal stop codon (because `NNN` does not match `/T(AA|AG|GA)$/`), so some of the inserted pseudoreferences have 3 extra bases. By using this script, we rectify this problem in a very very simplistic manner.
+
+Example Usage:
+
+`trimAlignment.awk trimmed_aligned_all/OG0001492_untrimmed.fasta > trimmed_aligned_all/OG0001492_trimmed.fasta`
 
 ## Illumina data parsing scripts:
 
