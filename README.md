@@ -152,7 +152,31 @@ Just another script for GenBank submission, where tbl2asn does not accept FASTQs
 
 ## Annotation-related scripts:
 
-### `ScaffoldGFFtoChromosomeGFF.pl`
+### `ScaffoldGFF3.pl`
+
+Usage:
+
+`ScaffoldGFF3.pl [-b <Output Broken GFF3>] -a <AGP> -g <GFF3> [-i]`
+
+`-a` specifies an AGP file indicating the relationships between the scaffolds in the GFF3 and the chromosomes they compose.
+
+`-g` specifies the GFF3 annotation in whichever space is input (the more-scaffolded space if `-i` is used, less-scaffolded space otherwise)
+
+`-b` specifies the filename for the output GFF3 of features unable to be converted between coordinate spaces
+
+`-i` is a flag meant for inverting the direction of the coordinate space transformation specified by the AGP, so if the AGP goes from scaffolds to chromosomes, using `-i` would take a chromosomal GFF3 as input, and produce a scaffold-space GFF3.
+
+The coordinate-transformed GFF3 is output to STDOUT.
+
+The `-d` flag can be used multiple times, and triggers output of debugging information onto STDERR.
+
+Example Usage:
+
+`ScaffoldGFF3.pl -dd -b Dsan_STOCAGO1482_BRAKER2_RNAseq_DmelProteins_toArms_broken.gff3 -a Dsan_STOCAGO1482_chromosome_arms_nocontam_mtDNA.agp -g Dsan_STOCAGO1482_BRAKER2_RNAseq_DmelProteins_contigs.gff3 > Dsan_STOCAGO1482_BRAKER2_RNAseq_DmelProteins_arms.gff3`
+
+### `ScaffoldGFFtoChromosomeGFF.pl` (deprecated in favor of `ScaffoldGFF3.pl`)
+
+**NOTE: This script is deprecated in favor of using `ScaffoldGFF3.pl`, which has more functionality, and likely bug fixes.**
 
 Usage:
 
