@@ -41,7 +41,7 @@ written for processing variant calling simulation results.
 =cut
 
 
-my $stats_path = "";
+my $stats_path = "-";
 my $bed_path = "";
 my $help = 0;
 my $man = 0;
@@ -74,7 +74,7 @@ close($bed_file);
 
 print STDERR "Processing stats file ${stats_path}\n" if $debug;
 my $stats_file;
-if ($stats_path eq '-') {
+if ($stats_path eq '-' or $stats_path eq '') {
    open $stats_file, "<&", \*STDIN or die "Failed to duplicate STDIN file handle for input stats TSV file due to error $!";
 } else {
    open $stats_file, "<", $stats_path or die "Failed to open input VCF stats TSV file ${stats_path} due to error $!";
