@@ -60,7 +60,7 @@ bool readFASTAs(vector<ifstream*> &input_FASTAs, vector<string> &FASTA_lines) {
          return 0;
       }
       string FASTA_line;
-      ifstream_notfail = getline(**FASTA_iterator, FASTA_line);
+      ifstream_notfail = (bool)getline(**FASTA_iterator, FASTA_line);
       if (!ifstream_notfail) {
          return ifstream_notfail;
       }
