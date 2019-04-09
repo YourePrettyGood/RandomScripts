@@ -231,7 +231,7 @@ Example Usage:
 
 This script extracts specific segments of a FASTA based on the intervals provided by a BED file.  If you extract only exon records from a GFF and convert that to BED, you could then extract all the exons as separate FASTA records.  Same thing with introns, assuming they have records in the GFF.  This is also useful for extracting flanking regions for primer design, etc.
 
-### `extractSites.pl
+### `extractSites.pl`
 
 Usage:
 
@@ -305,19 +305,19 @@ I've used this to prepare transcriptomes (minus UTRs) for differential expressio
 
 For instance, if you have the "GFF" output from the BRAKER1 pipeline, this is not actually GFF, but an oddly formatted GTF, so you can convert from GTF to GFF3 using the Augustus script `gtf2gff.pl` as follows:
 
-`gtf2gff.pl --printExon --printUTR --gff3 --out BRAKER_output_gtf2gff.gff3 < BRAKER_output.gff`
-
-`constructCDSesFromGFF3.pl -i BRAKER_genome.fasta -g BRAKER_output_gtf2gff.gff3 > BRAKER_output_gtf2gff_transcripts.fasta`
+```
+gtf2gff.pl --printExon --printUTR --gff3 --out BRAKER_output_gtf2gff.gff3 < BRAKER_output.gff
+constructCDSesFromGFF3.pl -i BRAKER_genome.fasta -g BRAKER_output_gtf2gff.gff3 > BRAKER_output_gtf2gff_transcripts.fasta
+```
 
 Oftentimes with BRAKER1- or BRAKER2-derived GFF3 files, you'll want to fix and fully sort them. My typical command set for getting a valid, sorted GFF3 ready for this script is:
 
-`awk 'BEGIN{FS="\t";OFS="\t";}$2=="AUGUSTUS"{if ($3 == "transcript") {split($9, genetxarr, "."); $9="gene_id \""genetxarr[1]"\"; transcript_id \""$9"\";";}; print $0;}' braker/[BRAKER run ID]/augustus.hints.gtf | ~/bin/augustus-3.3/augustus/scripts/gtf2gff.pl --printExon --gff3 --out=[annotation ID].gff3 2> [annotation ID]_gtf2gff.stderr`
-
-`samtools faidx [softmasked genome FASTA]`
-
-`cat <(awk 'BEGIN{print "##gff-version 3";}{print "##sequence-region "$1" 1 "$2;}' [softmasked genome FASTA].fai) <(fillMissingGenes.awk [annotation ID].gff3) > [annotation ID]_adjusted.gff3`
-
-`gt gff3 -sort -tidy -retainids -checkids [annotation ID]_adjusted.gff3 2> [annotation ID]_adjusted_sorting.stderr > [annotation ID]_adjusted_sorted.gff3`
+```
+awk 'BEGIN{FS="\t";OFS="\t";}$2=="AUGUSTUS"{if ($3 == "transcript") {split($9, genetxarr, "."); $9="gene_id \""genetxarr[1]"\"; transcript_id \""$9"\";";}; print $0;}' braker/[BRAKER run ID]/augustus.hints.gtf | ~/bin/augustus-3.3/augustus/scripts/gtf2gff.pl --printExon --gff3 --out=[annotation ID].gff3 2> [annotation ID]_gtf2gff.stderr
+samtools faidx [softmasked genome FASTA]
+cat <(awk 'BEGIN{print "##gff-version 3";}{print "##sequence-region "$1" 1 "$2;}' [softmasked genome FASTA].fai) <(fillMissingGenes.awk [annotation ID].gff3) > [annotation ID]_adjusted.gff3
+gt gff3 -sort -tidy -retainids -checkids [annotation ID]_adjusted.gff3 2> [annotation ID]_adjusted_sorting.stderr > [annotation ID]_adjusted_sorted.gff3
+```
 
 ### `extractIntronsFromGFF3.pl`
 
@@ -337,7 +337,7 @@ Beware that the extracted intronic sequence will contain the two splice junction
 
 GFF3-style intron and exon IDs are of the form: [transcript ID].intron# or [transcript ID].exon#
 
-FlyBase-style coordinates are of the form: [scaffold ID]:[left bound]..[right bound]([strand])
+FlyBase-style coordinates are of the form: `[scaffold ID]:[left bound]..[right bound]([strand])`
 
 ### `createGFFfromExonerate.pl`
 
@@ -632,6 +632,8 @@ The contiguity of the output depends on the contiguity of the alignment blocks, 
 Example Usage:
 
 `divergenceFromMAF.pl `
+
+**Documentation of divergenceFromMAF.pl to be completed**
 
 ### `sitePatterns.cpp`
 
