@@ -18,7 +18,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 #Assumes GFF3 is locally sorted (i.e. sorted order within a gene)
 #Output order is guaranteed to match two conditions:
-# 1) Sortedness within gene (along respective strand)
+# 1) Sortedness within gene (increasing coordinate order)
 # 2) Scaffold order is as found in the genome FASTA
 
 my $SCRIPTNAME = "extractIntronsFromGFF3.pl";
@@ -50,7 +50,7 @@ filtration for homology.
 
 Assumes GFF3 is locally sorted (i.e. sorted order within a gene)
 Output order is guaranteed to match two conditions:
- 1) Sortedness within gene (along respective strand)
+ 1) Sortedness within gene (increasing coordinate order)
  2) Scaffold order is as found in the genome FASTA
 
 =cut
@@ -110,14 +110,14 @@ while (my $line = <GFF>) {
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
    next unless $type eq "exon";
    my @transcript_names = ();
-   if ($tag_string =~ /Parent=(.+)(?:;|$)/i) {
+   if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
       @transcript_names = split /,/, $1;
    } else {
       print STDERR "Regex to find transcript name failed for tag string: ", $tag_string, "\n";
       next;
    }
    my $exon_ID = "";
-   if ($tag_string =~ /ID=(.+)(?:;|$)/i) {
+   if ($tag_string =~ /ID=(.+?)(?:;|$)/i) {
       $exon_ID = $1;
    } else {
       print STDERR "Regex to find exon ID failed for tag string: ", $tag_string, "\n";
@@ -187,10 +187,12 @@ while (my $line = <GENOME>) {
                my $intron_strand = "+";
                next if $intron_length < 1; #This should never occur, at the very least we expect splice junctions, so maybe this should be < 4
                if ($prev_right < $cur_left) { #Forward strand
-                  $intron_seq = substr $scaffold_sequence, $prev_right+1, $intron_length;
+                  #On forward strand, prev_right is equal to 0-based lower flank of intron
+                  $intron_seq = substr $scaffold_sequence, $prev_right, $intron_length;
                   $intron_coords = join("..", $prev_right+1, $cur_left-1);
                } else { #Reverse strand
-                  $intron_seq = revcomp(substr($scaffold_sequence, $prev_right+1, $intron_length));
+                  #On reverse strand, cur_left is equal to 0-based lower flank of intron
+                  $intron_seq = revcomp(substr($scaffold_sequence, $cur_left, $intron_length));
                   $intron_coords = join("..", $cur_left+1, $prev_right-1);
                   $intron_strand = "-";
                }

@@ -9,6 +9,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 ################################################################
 #                                                              #
 # Version 1.1 (2018/11/15) Revcomp now works on IUPAC bases    #
+# Version 1.2 (2019/04/11) Non-greedy Parent regex             #
 ################################################################
 
 #First pass script to construct a FASTA of CDSes from a GFF3 and
@@ -21,7 +22,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # (i.e. sorted order within a gene)
 
 my $SCRIPTNAME = "constructCDSesFromGFF3.pl";
-my $VERSION = "1.1";
+my $VERSION = "1.2";
 
 =pod
 
@@ -108,7 +109,7 @@ while (my $line = <GFF>) {
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
    next unless $type eq "CDS";
    my @transcript_names = ();
-   if ($tag_string =~ /Parent=(.+)(?:;|$)/i) {
+   if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
       @transcript_names = split /,/, $1;
    } else {
       print STDERR "Regex to find transcript name failed for tag string: ", $tag_string, "\n";
