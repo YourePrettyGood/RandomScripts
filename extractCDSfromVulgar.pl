@@ -9,13 +9,14 @@ Getopt::Long::Configure qw(gnu_getopt);
 ################################################################
 #                                                              #
 # Version 1.1 (2018/11/15) Abstracted revcomp to function      #
+# Version 1.2 (2019/04/12) Bit of extra logging                #
 ################################################################
 
 #First pass script to extract CDSes identified in a file resembling BED,
 # but with a fourth column identifying the protein to be extracted.
 
 my $SCRIPTNAME = "extractCDSfromVulgar.pl";
-my $VERSION = "1.1";
+my $VERSION = "1.2";
 
 =pod
 
@@ -60,19 +61,21 @@ print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
+my $genome_fh;
 if ($genome_path ne "STDIN") {
-   unless(open(GENOME, "<", $genome_path)) {
-      print STDERR "Error opening genome FASTA file.\n";
-      exit 2;
+   unless(open($genome_fh, "<", $genome_path)) {
+      print STDERR "Error opening genome FASTA file ${genome_path}.\n";
+      exit 1;
    }
 } else {
-   open(GENOME, "<&", "STDIN"); #Duplicate the file handle for STDIN to GENOME so we can seamlessly handle piping
+   open($genome_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $genome_fh so we can seamlessly handle piping
 }
 
 #Open the exonerate alignment VULGAR file:
-unless(open(VULGAR, "<", $vulgar_path)) {
-   print STDERR "Error opening exonerate alignment VULGAR file.\n";
-   exit 3;
+my $vulgar_fh;
+unless(open($vulgar_fh, "<", $vulgar_path)) {
+   print STDERR "Error opening exonerate alignment VULGAR file ${vulgar_path}.\n";
+   exit 2;
 }
 
 sub vulgarToIntervals($$$) {
@@ -125,7 +128,7 @@ sub vulgarToIntervals($$$) {
 my %CDS_intervals = ();
 my %CDS_scaffolds = ();
 my %CDS_strands = ();
-while (my $line = <VULGAR>) {
+while (my $line = <$vulgar_fh>) {
    chomp $line;
    next unless $line =~ /^vulgar:/; #Make sure to skip non-VULGAR lines
    my @vulgararr = split /\s+/, $line;
@@ -145,13 +148,13 @@ while (my $line = <VULGAR>) {
    $CDS_strands{$prot_id} = $prot_strand;
 }
 
-close(VULGAR);
+close($vulgar_fh);
 
 #Now we can iterate through the genome FASTA, and store the records
 my %scaffolds = ();
 my $scaffold_name = "";
 my $scaffold_sequence = "";
-while (my $line = <GENOME>) {
+while (my $line = <$genome_fh>) {
    chomp $line;
    #If we're at a header line and we've seen header lines before,
    # output the sites from the previous scaffold (since we're on
@@ -167,7 +170,7 @@ while (my $line = <GENOME>) {
    }
 }
 $scaffolds{$scaffold_name} = $scaffold_sequence;
-close(GENOME);
+close($genome_fh);
 
 sub revcomp($) {
    my $input_sequence = shift @_;

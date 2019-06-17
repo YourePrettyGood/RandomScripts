@@ -8,6 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #########################################################################################
 # fastqToFastaQual.pl                                                                   #
 # Version 1.0 (2017/04/20)                                                              #
+# Version 1.1 (2019/04/12) Extra bit of logging                                         #
 # Description:                                                                          #
 # This script converts a FASTQ file into a paired set of FASTA and QUAL files           #
 #                                                                                       #
@@ -20,7 +21,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #########################################################################################
 
 my $SCRIPTNAME = "fastqToFastaQual.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -58,32 +59,35 @@ pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
+my $fastq_fh;
 if ($input_path ne "STDIN") {
-   unless(open(FASTQ, "<", $input_path)) {
-      print STDERR "Error opening input FASTQ file.\n";
-      exit 2;
+   unless(open($fastq_fh, "<", $input_path)) {
+      print STDERR "Error opening input FASTQ file ${input_path}.\n";
+      exit 1;
    }
 } else {
-   open(FASTQ, "<&", "STDIN"); #Duplicate the file handle for STDIN to CONTIGS so we can seamlessly handle piping
+   open($fastq_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $fastq_fh so we can seamlessly handle piping
 }
 
+my $fasta_fh;
 if ($output_fasta eq "") {
    print STDERR "Missing FASTA file path for output.\n";
-   exit 5;
+   exit 2;
 } else {
-   unless(open(FASTA, ">", $output_fasta)) {
-      print STDERR "Error opening output FASTA file.\n";
-      exit 4;
+   unless(open($fasta_fh, ">", $output_fasta)) {
+      print STDERR "Error opening output FASTA file ${output_fasta}.\n";
+      exit 3;
    }
 }
 
+my $qual_fh;
 if ($output_qual eq "") {
    print STDERR "Missing QUAL file path for output.\n";
-   exit 7;
+   exit 4;
 } else {
-   unless(open(QUAL, ">", $output_qual)) {
-      print STDERR "Error opening output QUAL file.\n";
-      exit 6;
+   unless(open($qual_fh, ">", $output_qual)) {
+      print STDERR "Error opening output QUAL file ${output_qual}.\n";
+      exit 5;
    }
 }
 
@@ -115,20 +119,20 @@ sub wrap_qual_sequence($$) {
 
 my ($header, $sequence, $qualheader, $quals) = ('', '', '', '');
 my $fastq_line_modulus = 1;
-while (my $line = <FASTQ>) {
+while (my $line = <$fastq_fh>) {
    chomp $line;
    if ($fastq_line_modulus == 1) {
       $header = substr $line, 1;
    } elsif ($fastq_line_modulus == 2) {
       $sequence = $line;
       my $wrapped_sequence = wrap_fasta_sequence($sequence, 80);
-      print FASTA ">", $header, "\n", $wrapped_sequence, "\n";
+      print $fasta_fh ">", $header, "\n", $wrapped_sequence, "\n";
    } elsif ($fastq_line_modulus == 3) {
       $qualheader = substr $line, 1;
    } else { #Modulus is 0
       $quals = $line;
       my $wrapped_quals = wrap_qual_sequence($quals, 51);
-      print QUAL ">", $header, "\n", $wrapped_quals, "\n";
+      print $qual_fh ">", $header, "\n", $wrapped_quals, "\n";
       ($header, $sequence, $qualheader, $quals) = ('', '', '', '');
    }
    $fastq_line_modulus++;
@@ -136,9 +140,9 @@ while (my $line = <FASTQ>) {
 }
 #Close the input file if it was indeed opened:
 if ($input_path ne "STDIN") {
-   close(FASTQ);
+   close($fastq_fh);
 }
-close(FASTA);
-close(QUAL);
+close($fasta_fh);
+close($qual_fh);
 
 exit 0;

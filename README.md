@@ -691,6 +691,8 @@ Example Usage:
 
 ## Illumina data parsing scripts:
 
+**These scripts are being moved to a new repository [Parsing Pipeline](https://github.com/YourePrettyGood/ParsingPipeline/), so please take a look there, as they will soon be gone from this repo.**
+
 ### `ReadHistogram.sh`
 
 This quick bash script just simply wraps a one-liner that creates a histogram TSV of the index reads, sorted in descending order by count.  This histogram file is useful as a QC check before parsing, as it usually takes substantially less time to run than parsing.

@@ -8,6 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 ################################################################
 #                                                              #
+# Version 1.1 (2019/04/12) Extra bit of logging                #
 ################################################################
 
 #First pass script to extract sites IDed by a BED file from a FASTA file
@@ -19,7 +20,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # and intergenic sites (and perhaps UTRs).
 
 my $SCRIPTNAME = "extractSites.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -59,36 +60,38 @@ print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
+my $genome_fh;
 if ($genome_path ne "STDIN") {
-   unless(open(GENOME, "<", $genome_path)) {
-      print STDERR "Error opening genome FASTA file.\n";
-      exit 2;
+   unless(open($genome_fh, "<", $genome_path)) {
+      print STDERR "Error opening genome FASTA file ${genome_path}.\n";
+      exit 1;
    }
 } else {
-   open(GENOME, "<&", "STDIN"); #Duplicate the file handle for STDIN to GENOME so we can seamlessly handle piping
+   open($genome_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $genome_fh so we can seamlessly handle piping
 }
 
 #Open the BED file:
-unless(open(BED, "<", $bed_path)) {
-   print STDERR "Error opening BED file.\n";
-   exit 3;
+my $bed_fh;
+unless(open($bed_fh, "<", $bed_path)) {
+   print STDERR "Error opening BED file ${bed_path}.\n";
+   exit 2;
 }
 
 my %sites_per_scaffold = ();
-while (my $line = <BED>) {
+while (my $line = <$bed_fh>) {
    chomp $line;
    my ($scaffold, $start_0_based, $end_1_based) = split /\t/, $line, 3;
    push @{$sites_per_scaffold{$scaffold}}, "${start_0_based}:".($end_1_based-$start_0_based);
 }
 
-close(BED);
+close($bed_fh);
 
 #Now we can iterate through the genome FASTA, and concatenate sites on each
 # scaffold.
 my $scaffold_name = "";
 my $scaffold_sequence = "";
 my $sites_sequence = "";
-while (my $line = <GENOME>) {
+while (my $line = <$genome_fh>) {
    chomp $line;
    #If we're at a header line and we've seen header lines before,
    # output the sites from the previous scaffold (since we're on
@@ -110,7 +113,7 @@ while (my $line = <GENOME>) {
       $scaffold_sequence .= $line;
    }
 }
-close(GENOME);
+close($genome_fh);
 
 #Now make sure we account for the last scaffold:
 if (exists($sites_per_scaffold{$scaffold_name})) {

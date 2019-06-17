@@ -6,6 +6,7 @@
  * Version 1.2 written 2017/05/26 (Finally implemented inbred pi)           *
  * Version 1.3 written 2018/08/09 (Fixed bug ignoring softmasked bases)     *
  * Version 1.4 written 2018/11/08 (Omit position may output weight instead) *
+ * Version 1.5 written 2019/05/06 (Option to pass FOFN instead of pos args) *
  *                                                                          *
  * Description:                                                             *
  *                                                                          *
@@ -26,13 +27,13 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "1.4"
+#define VERSION "1.5"
 
 //Define number of bases:
 #define NUM_BASES 4
 
 //Usage/help:
-#define USAGE "calculatePolymorphism\nUsage:\n calculatePolymorphism [options] [list of pseudoreference FASTAs]\n Options:\n  --help,-h:\t\tOutput this documentation\n  --version,-v:\t\tOutput the version number\n  --segregating_sites,-s:\tOutput whether or not the site is segregating\n  --inbred,-i:\t\tAssume inbred input sequences\n  --prng_seed,-p:\t\tSet pseudo-random number generator seed for allele choice if -i is set\n  --usable_fraction,-u:\tFourth column represents fraction of unmasked bases\n  --debug,-d:\t\tOutput extra debugging info\n"
+#define USAGE "calculatePolymorphism\nUsage:\n calculatePolymorphism [options] [list of pseudoreference FASTAs]\n Options:\n  --help,-h:\t\tOutput this documentation\n  --version,-v:\t\tOutput the version number\n  --fofn,-f:\t\tPass a file of filenames, rather than listing filenames\n  --segregating_sites,-s:\tOutput whether or not the site is segregating\n  --inbred,-i:\t\tAssume inbred input sequences\n  --prng_seed,-p:\t\tSet pseudo-random number generator seed for allele choice if -i is set\n  --usable_fraction,-u:\tFourth column represents fraction of unmasked bases\n  --debug,-d:\t\tOutput extra debugging info\n"
 
 using namespace std;
 
@@ -222,6 +223,8 @@ int main(int argc, char **argv) {
    
    //Option for debugging:
    bool debug = 0;
+   //Option for input of FASTA file paths:
+   string input_fofn = "";
    //Option for inbred lines:
    bool inbred = 0;
    //Option to output segregating sites:
@@ -237,6 +240,7 @@ int main(int argc, char **argv) {
    extern int optind;
    //Create the struct used for getopt:
    const struct option longoptions[] {
+      {"fofn", required_argument, 0, 'f'},
       {"segregating_sites", no_argument, 0, 's'},
       {"inbred", no_argument, 0, 'i'},
       {"prng_seed", required_argument, 0, 'p'},
@@ -246,8 +250,12 @@ int main(int argc, char **argv) {
       {"help", no_argument, 0, 'h'}
    };
    //Read in the options:
-   while ((optchar = getopt_long(argc, argv, "sip:udvh", longoptions, &structindex)) > -1) {
+   while ((optchar = getopt_long(argc, argv, "f:sip:udvh", longoptions, &structindex)) > -1) {
       switch(optchar) {
+         case 'f':
+            cerr << "Taking input from FOFN " << optarg << endl;
+            input_fofn = optarg;
+            break;
          case 's':
             cerr << "Only outputting segregating sites, not polymorphism." << endl;
             segsites = 1;
@@ -283,8 +291,37 @@ int main(int argc, char **argv) {
             break;
       }
    }
+   //Read in the input FASTA paths:
+   if (input_fofn != "") {
+      string fofn_line;
+      ifstream fofn;
+      fofn.open(input_fofn);
+      if (!fofn) {
+         cerr << "Error opening file of input FASTA filenames " << input_fofn << endl;
+         return 2;
+      }
+      while (getline(fofn, fofn_line)) {
+         ifstream infile_test(fofn_line);
+         if (infile_test.good()) {
+            input_FASTA_paths.push_back(fofn_line);
+            if (debug) {
+               cerr << "Added input FASTA file " << fofn_line << " to the vector." << endl;
+            }
+         } else {
+            cerr << "Input FASTA file " << fofn_line << " in FOFN " << input_fofn << " doesn't seem to be openable, skipping." << endl;
+         }
+         infile_test.close();
+      }
+      fofn.close();
+   }
    //Read in the positional arguments:
+   if (input_FASTA_paths.size() > 0 && optind < argc) {
+      cerr << "Adding input FASTA files from positional arguments on top of existing set from FOFN " << input_fofn << endl;
+   }
    while (optind < argc) {
+      if (debug) {
+         cerr << "Added input FASTA file " << argv[optind] << " to the vector." << endl;
+      }
       input_FASTA_paths.push_back(argv[optind++]);
    }
    

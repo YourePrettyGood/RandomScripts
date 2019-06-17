@@ -9,6 +9,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 ################################################################
 #                                                              #
 # Version 1.0 (2019/04/09) Initial version                     #
+# Version 1.1 (2019/04/19) Use CDS or exon records as bounds   #
 ################################################################
 
 #First pass script to construct a FASTA of introns from a GFF3 and
@@ -22,7 +23,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # 2) Scaffold order is as found in the genome FASTA
 
 my $SCRIPTNAME = "extractIntronsFromGFF3.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -38,14 +39,19 @@ extractIntronsFromGFF3.pl [options]
   --help,-h,-?           Display this help documentation
   --input_genome,-i      Path to input genome FASTA file (default: STDIN)
   --gff3_file,-g         Path to genome annotation GFF3 file
+  --prefix,-p            Prefix prepended to FASTA headers (default: none)
+  --boundary_type,-b     GFF3 feature type that determines the boundaries
+                         of an intron (i.e. exon or CDS)
+                         (default: exon)
   --version,-v           Output version string
+  --debug,-d             Output debugging info to STDERR
 
 =head1 DESCRIPTION
 
 This script constructs a FASTA of introns from a GFF3 and a genome FASTA.
 This uses structures from constructCDSesFromGFF3.pl and adds a header with
 intron ID (GFF3 format), intron coordinates (FlyBase-style), intron length,
-flanking exon lengths, and flanking exon IDs to facilitate downstream
+flanking exon lengths, and flanking exon/CDS IDs to facilitate downstream
 filtration for homology.
 
 Assumes GFF3 is locally sorted (i.e. sorted order within a gene)
@@ -66,28 +72,36 @@ my $help = 0;
 my $man = 0;
 my $genome_path = "STDIN";
 my $gff3_path = "";
+my $header_prefix = "";
+my $boundary_feature = "exon";
 my $dispversion = 0;
-GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+my $debug = 0;
+GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'prefix|p=s' => \$header_prefix, 'boundary_type|b=s' => \$boundary_feature, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
+$header_prefix .= "_" unless $header_prefix eq "";
+print STDERR "Boundary feature type ${boundary_feature} not recognized, expecting exon or CDS.\n" unless $boundary_feature eq "exon" or $boundary_feature eq "CDS";
+exit 3 unless $boundary_feature eq "exon" or $boundary_feature eq "CDS";
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
+my $genome_fh;
 if ($genome_path ne "STDIN") {
-   unless(open(GENOME, "<", $genome_path)) {
-      print STDERR "Error opening genome FASTA file.\n";
-      exit 2;
+   unless(open($genome_fh, "<", $genome_path)) {
+      print STDERR "Error opening genome FASTA file ${genome_path}.\n";
+      exit 1;
    }
 } else {
-   open(GENOME, "<&", "STDIN"); #Duplicate the file handle for STDIN to GENOME so we can seamlessly handle piping
+   open($genome_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $genome_fh so we can seamlessly handle piping
 }
 
 #Open the annotation GFF3 file:
-unless(open(GFF, "<", $gff3_path)) {
-   print STDERR "Error opening GFF3 file.\n";
-   exit 3;
+my $gff_fh;
+unless(open($gff_fh, "<", $gff3_path)) {
+   print STDERR "Error opening GFF3 file ${gff3_path}.\n";
+   exit 2;
 }
 
 #For now, we won't validate the input files, but here are our assumptions:
@@ -102,16 +116,23 @@ my $FASTA_skip = 0; #Skip all lines after the ##FASTA line if present
 my %exon_coordinates = ();
 my %exon_IDs = ();
 my %tx_per_scaffold = ();
-while (my $line = <GFF>) {
+my %exon_count = ();
+while (my $line = <$gff_fh>) {
    chomp $line;
    $FASTA_skip = 1 if $line =~ /^##FASTA/; #Trigger FASTA skip
    next if $FASTA_skip;
    next if $line =~ /^#/; #Skip comment lines
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
-   next unless $type eq "exon";
+   next unless $type eq $boundary_feature;
+   my $parent_name = "";
    my @transcript_names = ();
    if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
       @transcript_names = split /,/, $1;
+      $parent_name = $transcript_names[0]; #Just pick the first transcript as parent for exon ID if not found
+      for my $transcript (@transcript_names) {
+         $exon_count{$transcript}++ if exists($exon_count{$transcript});
+         $exon_count{$transcript} = 1 unless exists($exon_count{$transcript});
+      }
    } else {
       print STDERR "Regex to find transcript name failed for tag string: ", $tag_string, "\n";
       next;
@@ -120,8 +141,10 @@ while (my $line = <GFF>) {
    if ($tag_string =~ /ID=(.+?)(?:;|$)/i) {
       $exon_ID = $1;
    } else {
-      print STDERR "Regex to find exon ID failed for tag string: ", $tag_string, "\n";
-      next;
+      $exon_ID = "${parent_name}.${boundary_feature}" . $exon_count{$parent_name}; #Create exon ID if it doesn't exist
+      print STDERR "Regex to find exon ID failed for tag string: ", $tag_string, "\n" if $debug;
+      print STDERR "Substituting ${exon_ID} in\n" if $debug;
+#      next;
    }
    
    #Iterate over each transcript this exon belongs to:
@@ -153,14 +176,14 @@ while (my $line = <GFF>) {
    }
 }
 
-close(GFF);
+close($gff_fh);
 
 #Now we can iterate through the genome FASTA, and extract the introns
 #Thus the output introns are in genome FASTA order at the scaffold level,
 # but GFF order within the scaffolds.
 my $scaffold_name = "";
 my $scaffold_sequence = "";
-while (my $line = <GENOME>) {
+while (my $line = <$genome_fh>) {
    chomp $line;
    #If we're at a header line and we've seen header lines before,
    # output the introns from the previous scaffold (since we're on
@@ -197,7 +220,7 @@ while (my $line = <GENOME>) {
                   $intron_strand = "-";
                }
                #Print the FASTA header (Intron ID, coords, Intron Length, Left Exon Length, Right Exon Length, Left Exon ID, Right Exon ID):
-               print STDOUT ">${transcript}.intron${i} ${scaffold_name}:${intron_coords}(${intron_strand}) ${intron_length} ${prev_length} ${cur_length} ${prev_ID} ${cur_ID}\n";
+               print STDOUT ">${header_prefix}${transcript}.intron${i} ${scaffold_name}:${intron_coords}(${intron_strand}) ${intron_length} ${prev_length} ${cur_length} ${prev_ID} ${cur_ID}\n";
                #Now print the intron sequence:
                print STDOUT "${intron_seq}\n";
             }
@@ -211,7 +234,7 @@ while (my $line = <GENOME>) {
       $scaffold_sequence .= $line;
    }
 }
-close(GENOME);
+close($genome_fh);
 #Now make sure we account for the last scaffold:
 if (exists($tx_per_scaffold{$scaffold_name})) {
    #Extract introns based on the exon range string:
@@ -242,7 +265,7 @@ if (exists($tx_per_scaffold{$scaffold_name})) {
             $intron_strand = "-";
          }
          #Print the FASTA header (Intron ID, coords, Intron Length, Left Exon Length, Right Exon Length, Left Exon ID, Right Exon ID):
-         print STDOUT ">${transcript}.intron${i} ${scaffold_name}:${intron_coords}(${intron_strand}) ${intron_length} ${prev_length} ${cur_length} ${prev_ID} ${cur_ID}\n";
+         print STDOUT ">${header_prefix}${transcript}.intron${i} ${scaffold_name}:${intron_coords}(${intron_strand}) ${intron_length} ${prev_length} ${cur_length} ${prev_ID} ${cur_ID}\n";
          #Now print the intron sequence:
          print STDOUT "${intron_seq}\n";
       }

@@ -8,6 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 ################################################################
 #                                                              #
+# Version 1.1 (2019/04/12) Non-greedy regex for Parent         #
 ################################################################
 
 #First pass script to translate BED intervals in CDS space to
@@ -15,7 +16,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #Assumes sorted order of records within a gene in a GFF3
 
 my $SCRIPTNAME = "CDStoGenomicIntervals.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -94,7 +95,7 @@ while (my $line = <$gff_fh>) {
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
    next unless $type eq "CDS";
    my @transcript_names = ();
-   if ($tag_string =~ /Parent=(.+)(?:;|$)/i) {
+   if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
       @transcript_names = split /,/, $1;
    } else {
       print STDERR "Regex to find transcript name failed for tag string: ", $tag_string, "\n";

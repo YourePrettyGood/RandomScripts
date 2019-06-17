@@ -4,5 +4,8 @@ OBJS = calculateDxy calculatePolymorphism listPolyDivSites nonOverlappingWindows
 
 all: $(OBJS)
 
+#test: $(OBJS)
+#	./test_scripts.sh
+
 clean:
 	rm $(OBJS)

@@ -8,6 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 
 ################################################################
 #                                                              #
+# Version 1.1 (2019/04/12) Extra bit of logging                #
 ################################################################
 
 #First-pass script to label barcodes in an index read histogram
@@ -15,7 +16,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # perfectly matching barcode is found.
 
 my $SCRIPTNAME = "labelIndexReadHistogram.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -54,24 +55,26 @@ print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
 #Open the index read histogram file, or set it up to be read from STDIN:
+my $histfile_fh;
 if ($histogram_path ne "STDIN") {
-   unless(open(HISTFILE, "<", $histogram_path)) {
-      print STDERR "Error opening index read histogram TSV file.\n";
-      exit 2;
+   unless(open($histfile_fh, "<", $histogram_path)) {
+      print STDERR "Error opening index read histogram TSV file ${histogram_path}.\n";
+      exit 1;
    }
 } else {
-   open(HISTFILE, "<&", "STDIN"); #Duplicate the file handle for STDIN to HISTFILE so we can seamlessly handle piping
+   open($histfile_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $histfile_fh so we can seamlessly handle piping
 }
 
 #Open the barcode file:
-unless(open(INDEXFILE, "<", $bcfile_path)) {
-   print STDERR "Error opening barcode file.\n";
-   exit 3;
+my $indexfile_fh;
+unless(open($indexfile_fh, "<", $bcfile_path)) {
+   print STDERR "Error opening barcode file ${bcfile_path}.\n";
+   exit 2;
 }
 
 my @bases = ("A", "C", "G", "T");
 my %FCmap = ();
-while (my $line = <INDEXFILE>) {
+while (my $line = <$indexfile_fh>) {
    chomp $line;
    my ($id, $bc) = split /\t/, $line, 2;
    #Should do some case checking to make sure it's a valid barcode file in the future
@@ -80,9 +83,9 @@ while (my $line = <INDEXFILE>) {
    die "Invalid barcode found, must be non-ambiguous nucleotides (ACGT only).\n" unless $bc =~ /^[ACGT]+$/;
    $FCmap{$bc} = $id;
 }
-close(INDEXFILE);
+close($indexfile_fh);
 
-while (my $line = <HISTFILE>) {
+while (my $line = <$histfile_fh>) {
    chomp $line;
    $line =~ s/^\s+//;
    my ($count, $bc) = split /\s+/, $line, 2;
@@ -114,4 +117,4 @@ while (my $line = <HISTFILE>) {
    }
    print "\n";
 }
-close(HISTFILE) if $histogram_path ne "STDIN";
+close($histfile_fh);

@@ -2,6 +2,7 @@
  * sitePatterns.cpp                                                         *
  * Written by Patrick Reilly                                                *
  * Version 1.0 written 2017/01/16                                           *
+ * Version 1.1 written 2019/05/30 Softmask fix, FOFN input, and debugging   *
  *                                                                          *
  * Description:                                                             *
  *                                                                          *
@@ -22,7 +23,7 @@
 #define optional_argument 2
 
 //Version:
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 //Define number of bases:
 #define NUM_BASES 4
@@ -83,36 +84,47 @@ void processScaffold(vector<string> &FASTA_headers, vector<string> &FASTA_sequen
       for (unsigned long j = 0; j < num_sequences; j++) {
          switch (FASTA_sequences[j][i]) {
             case 'A':
+            case 'a':
                site_pattern += "AA";
                break;
             case 'C':
+            case 'c':
                site_pattern += "CC";
                break;
             case 'G':
+            case 'g':
                site_pattern += "GG";
                break;
             case 'K': //G/T het site
+            case 'k':
                site_pattern += "GT";
                break;
             case 'M': //A/C het site
+            case 'm':
                site_pattern += "AC";
                break;
             case 'R': //A/G het site
+            case 'r':
                site_pattern += "AG";
                break;
             case 'S': //C/G het site
+            case 's':
                site_pattern += "CG";
                break;
             case 'T':
+            case 't':
                site_pattern += "TT";
                break;
             case 'W': //A/T het site
+            case 'w':
                site_pattern += "AT";
                break;
             case 'Y': //C/T het site
+            case 'y':
                site_pattern += "CT";
                break;
             case 'N':
+            case 'n':
             case '-':
             default: //Assume that any case not handled here is an N
                site_pattern += "NN";
@@ -131,6 +143,11 @@ int main(int argc, char **argv) {
    //Variables for processing the FASTAs:
    vector<string> input_FASTA_paths;
    vector<ifstream*> input_FASTAs;
+   
+   //Option for debugging:
+   unsigned short int debug = 0;
+   //Option for input of FASTA file paths:
+   string input_fofn = "";
 
    //Variable for storing pattern counts:
    map<string, unsigned long> pattern_counts;
@@ -141,12 +158,22 @@ int main(int argc, char **argv) {
    extern int optind;
    //Create the struct used for getopt:
    const struct option longoptions[] {
+      {"fofn", required_argument, 0, 'f'},
+      {"debug", no_argument, 0, 'd'},
       {"version", no_argument, 0, 'v'},
       {"help", no_argument, 0, 'h'}
    };
    //Read in the options:
-   while ((optchar = getopt_long(argc, argv, "vh", longoptions, &structindex)) > -1) {
+   while ((optchar = getopt_long(argc, argv, "f:dvh", longoptions, &structindex)) > -1) {
       switch(optchar) {
+         case 'f':
+            cerr << "Taking input from FOFN " << optarg << endl;
+            input_fofn = optarg;
+            break;
+         case 'd':
+            cerr << "Debugging mode enabled." << endl;
+            debug++;
+            break;
          case 'v':
             cerr << "calculatePolymorphism version " << VERSION << endl;
             return 0;
@@ -162,8 +189,37 @@ int main(int argc, char **argv) {
             break;
       }
    }
+   //Read in the input FASTA paths:
+   if (input_fofn != "") {
+      string fofn_line;
+      ifstream fofn;
+      fofn.open(input_fofn);
+      if (!fofn) {
+         cerr << "Error opening file of input FASTA filenames " << input_fofn << endl;
+         return 2;
+      }
+      while (getline(fofn, fofn_line)) {
+         ifstream infile_test(fofn_line);
+         if (infile_test.good()) {
+            input_FASTA_paths.push_back(fofn_line);
+            if (debug) {
+               cerr << "Added input FASTA file " << fofn_line << " to the vector." << endl;
+            }
+         } else {
+            cerr << "Input FASTA file " << fofn_line << " in FOFN " << input_fofn << " doesn't seem to be openable, skipping." << endl;
+         }
+         infile_test.close();
+      }
+      fofn.close();
+   }
    //Read in the positional arguments:
+   if (input_FASTA_paths.size() > 0 && optind < argc) {
+      cerr << "Adding input FASTA files from positional arguments on top of existing set from FOFN " << input_fofn << endl;
+   }
    while (optind < argc) {
+      if (debug) {
+         cerr << "Adding input FASTA file " << argv[optind] << " to the vector." << endl;
+      }
       input_FASTA_paths.push_back(argv[optind++]);
    }
    
@@ -191,6 +247,9 @@ int main(int argc, char **argv) {
          any_header_lines = any_header_lines || ((*line_iterator)[0] == '>');
       }
       if (all_header_lines) {
+         if (debug) {
+            cerr << "Completed reading scaffold " << FASTA_lines[0].substr(1) << endl;
+         }
          if (!FASTA_sequences.empty()) {
             processScaffold(FASTA_headers, FASTA_sequences, pattern_counts);
             FASTA_sequences.clear();
@@ -210,6 +269,9 @@ int main(int argc, char **argv) {
          closeFASTAs(input_FASTAs);
          return 4;
       } else {
+         if (debug) {
+            cerr << "Loading " << FASTA_lines.size() << " FASTA lines into sequences." << endl;
+         }
          unsigned long sequence_index = 0;
          for (auto line_iterator = FASTA_lines.begin(); line_iterator != FASTA_lines.end(); ++line_iterator) {
             if (FASTA_sequences.size() < FASTA_lines.size()) {

@@ -9,6 +9,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 # prepContigsForGenBank.pl                                                              #
 # Version 1.0 (2017/04/20)                                                              #
 # Version 1.1 (2017/05/10)                                                              #
+# Version 1.2 (2019/04/12)                                                              #
 # Description:                                                                          #
 # This script annotates FASTQ headers for GenBank submission, and produces an AGP       #
 #                                                                                       #
@@ -27,7 +28,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #########################################################################################
 
 my $SCRIPTNAME = "prepContigsForGenBank.pl";
-my $VERSION = "1.1";
+my $VERSION = "1.2";
 
 =pod
 
@@ -92,32 +93,34 @@ pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
+my $contigs_fh;
 if ($input_path ne "STDIN") {
-   unless(open(CONTIGS, "<", $input_path)) {
-      print STDERR "Error opening input contigs FASTQ file.\n";
-      exit 2;
+   unless(open($contigs_fh, "<", $input_path)) {
+      print STDERR "Error opening input contigs FASTQ file ${input_path}.\n";
+      exit 1;
    }
 } else {
-   open(CONTIGS, "<&", "STDIN"); #Duplicate the file handle for STDIN to CONTIGS so we can seamlessly handle piping
+   open($contigs_fh, "<&", "STDIN"); #Duplicate the file handle for STDIN to $contigs_fh so we can seamlessly handle piping
 }
 
 if (scalar @ARGV < 1) { #Not enough mandatory arguments
    print STDERR "Missing Configuration String.\n";
-   exit 3;
+   exit 2;
 } else {
    $config_string = $ARGV[0];
 }
 
+my $agp_fh;
 if ($agp_file eq "") {
    print STDERR "Missing AGP file path for output.\n";
-   exit 5;
+   exit 3;
 } else {
-   unless(open(AGP, ">", $agp_file)) {
-      print STDERR "Error opening output AGP file.\n";
+   unless(open($agp_fh, ">", $agp_file)) {
+      print STDERR "Error opening output AGP file ${agp_file}.\n";
       exit 4;
    }
    #Make the AGP header:
-   print AGP "##agp-version", "\t", "2.0", "\n";
+   print $agp_fh "##agp-version", "\t", "2.0", "\n";
    #Later perhaps add the ORGANISM, TAX_ID, ASSEMBLY NAME, ASSEMBLY DATE, etc. headers
 }
 
@@ -128,7 +131,7 @@ my %contigs = ();
 my %contig_quals = ();
 my ($header, $sequence, $qualheader, $quals) = ('', '', '', '');
 my $fastq_line_modulus = 1;
-while (my $line = <CONTIGS>) {
+while (my $line = <$contigs_fh>) {
    chomp $line;
    if ($fastq_line_modulus == 1) {
       $header = substr $line, 1;
@@ -146,9 +149,8 @@ while (my $line = <CONTIGS>) {
    $fastq_line_modulus %= 4;
 }
 #Close the input file if it was indeed opened:
-if ($input_path ne "STDIN") {
-   close(CONTIGS);
-}
+close($contigs_fh);
+
 #Keep track of the unscaffolded contigs if asked to:
 my %scaffolded_contigs = ();
 
@@ -187,8 +189,8 @@ for my $scaffold (@scaffold_arr) {
       $scaffold_start += $gap_size;
       $scaffold_part_num++;
       #Print the contig and gap lines to the AGP:
-      print AGP $agp_line;
-      print AGP $agp_gap_line unless $contig eq $contig_arr[-1];
+      print $agp_fh $agp_line;
+      print $agp_fh $agp_gap_line unless $contig eq $contig_arr[-1];
       #Output the annotated FASTQ record to STDOUT:
       print STDOUT "@", $genbank_header, "\n", $contigs{$contig_name}, "\n", "+", $genbank_header, "\n", $contig_quals{$contig_name}, "\n";
       #Add the contig to the list of scaffolded contigs:
@@ -203,12 +205,12 @@ if ($unscaffolded != 0) {
    for my $key (keys %contigs) {
       my $genbank_header = $key; #Not sure if we need to add more here
       #Output the AGP line for an unplaced contig:
-      print AGP join("\t", $key . "_scaf", 1, length($contigs{$key}), 1, "W", $key, 1, length($contigs{$key}), "+"), "\n" unless exists($scaffolded_contigs{$key});
+      print $agp_fh join("\t", $key . "_scaf", 1, length($contigs{$key}), 1, "W", $key, 1, length($contigs{$key}), "+"), "\n" unless exists($scaffolded_contigs{$key});
       #Output the annotated FASTQ record to STDOUT:
       print STDOUT "@", $genbank_header, "\n", $contigs{$key}, "\n", "+", $genbank_header, "\n", $contig_quals{$key}, "\n" unless exists($scaffolded_contigs{$key});
    }
 }
 
-close(AGP);
+close($agp_fh);
 
 exit 0;
