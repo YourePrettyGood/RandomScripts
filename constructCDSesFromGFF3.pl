@@ -13,6 +13,8 @@ Getopt::Long::Configure qw(gnu_getopt);
 # Version 1.3 (2019/04/27) Option for longest isoform only     #
 # Version 1.4 (2019/05/16) Stable choice of longest isoform    #
 # Version 1.5 (2019/06/13) Use exons instead of CDS on request #
+# Version 1.6 (2020/07/19) Generalize to rRNA and tRNA too     #
+#                          Fixed a bug when feature_type=exon  #
 ################################################################
 
 #First pass script to construct a FASTA of CDSes from a GFF3 and
@@ -31,8 +33,18 @@ Getopt::Long::Configure qw(gnu_getopt);
 #2019/06/13 revision allows for defining transcripts with
 # child tags other than CDS (e.g. exon)
 
+#2020/07/19 revision deviates from the original name of the script,
+# but enables extraction of other transcript types, as long as they
+# are characterized by a child tag (e.g. exon) and a parent tag
+# (i.e. gene). This includes tRNAs and rRNAs, though I'm
+# implementing them as separate runs (i.e. you choose to extract
+# CDSes/mRNAs, or tRNAs, or rRNAs, but not a combination).
+#This revision also fixes a bug with feature_type=exon, since
+# version 1.5 would extract any and all exon features with Parent
+# set. So now we do actually filter output by the type of the Parent.
+
 my $SCRIPTNAME = "constructCDSesFromGFF3.pl";
-my $VERSION = "1.5";
+my $VERSION = "1.6";
 
 =pod
 
@@ -53,6 +65,8 @@ constructCDSesFromGFF3.pl [options]
                          0 or 1, default is 0
   --longest,-l           Only output the longest isoform for each gene
   --feature,-f           Name of GFF3 feature to splice (default: CDS)
+  --tx_type,-t           Name of GFF3 transcript type (default: mRNA)
+  --debug,-d             Print debugging info to STDERR
   --version,-v           Output version string
 
 =head1 DESCRIPTION
@@ -63,7 +77,10 @@ format (no wrapping).
 
 Optionally, it can be used to construct full transcripts (including UTRs)
 as long as a single feature name represents all the components of a full
-transcript.
+transcript. It can also be used to construct non-mRNA transcripts as long
+as their GFF3 format conforms to the gene model: gene->[tx_type]->[feature].
+For example, tRNA and rRNA would be valid tx_type values as long as you
+use exon for feature.
 
 =cut
 
@@ -76,14 +93,16 @@ sub revcomp($) {
 
 my $help = 0;
 my $man = 0;
+my $debug = 0;
 my $genome_path = "STDIN";
 my $gff3_path = "";
 my $header_prefix = "";
 my $output_exon_range_strings = 0;
 my $longest_only = 0;
 my $feature_type = "CDS";
+my $tx_type = "mRNA";
 my $dispversion = 0;
-GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'prefix|p=s' => \$header_prefix, 'output_ers|e' => \$output_exon_range_strings, 'longest|l' => \$longest_only, 'feature|f=s' => \$feature_type, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_genome|i=s' => \$genome_path, 'gff3_file|g=s' => \$gff3_path, 'prefix|p=s' => \$header_prefix, 'output_ers|e' => \$output_exon_range_strings, 'longest|l' => \$longest_only, 'feature|f=s' => \$feature_type, 'tx_type|t=s' => \$tx_type, 'debug|d+' => \$debug, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 $header_prefix .= "_" unless $header_prefix eq "";
@@ -93,6 +112,9 @@ exit 0 if $dispversion;
 
 print STDERR "Unsupported feature type ${feature_type}, please use CDS or exon\n" unless $feature_type eq "CDS" or $feature_type eq "exon";
 exit 4 unless $feature_type eq "CDS" or $feature_type eq "exon";
+
+print STDERR "Unsupported feature type ${feature_type} for transcript type ${tx_type}, please use exon\n" unless ($tx_type eq "mRNA" and $feature_type eq "CDS" or $feature_type eq "exon") or ($tx_type ne "mRNA" and $feature_type eq "exon");
+exit 4 unless ($tx_type eq "mRNA" and $feature_type eq "CDS" or $feature_type eq "exon") or ($tx_type ne "mRNA" and $feature_type eq "exon");
 
 #Open the genome FASTA file, or set it up to be read from STDIN:
 my $genome_fh;
@@ -129,13 +151,15 @@ my %CDS_coordinates = ();
 my %CDSes_per_scaffold = ();
 my %isoform_length = (); #Keys are transcript IDs, values are isoform lengths
 my %gene_tx_map = (); #Hash of hashes ({gene}{tx}), basically a set of sets
+my %tx_types = (); #Keys are transcript IDs, values are record types (e.g. mRNA, rRNA, tRNA)
+print STDERR "Extracting spans of ${feature_type} records spliced in ${tx_type} records\n" if $debug;
 while (my $line = <$gff_fh>) {
    chomp $line;
    $FASTA_skip = 1 if $line =~ /^##FASTA/; #Trigger FASTA skip
    next if $FASTA_skip;
    next if $line =~ /^#/; #Skip comment lines
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
-   if ($type =~ /mRNA/i) {
+   if ($type =~ /${tx_type}/i) {
       if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
          my $gene_ID = $1;
          if ($tag_string =~ /ID=(.+?)(?:;|$)/i) {
@@ -143,6 +167,8 @@ while (my $line = <$gff_fh>) {
             $gene_tx_map{$gene_ID} = {} unless exists($gene_tx_map{$gene_ID});
             $gene_tx_map{$gene_ID}{$tx_ID} = undef;
             $isoform_length{$tx_ID} = 0; #Initialize the isoform length sum
+            $tx_types{$tx_ID} = $type; #Store the transcript type for the filter
+            print STDERR "Storing transcript ${tx_ID} under gene ${gene_ID} as type ${type}\n" if $debug > 1;
          } else {
             print STDERR "Regex to find transcript ID failed for tag string: ", $tag_string, "\n";
             next;
@@ -168,6 +194,7 @@ while (my $line = <$gff_fh>) {
       # to the list of CDSes on that scaffold
       unless (exists($CDS_coordinates{$transcript_name})) {
          push @{$CDSes_per_scaffold{$scaffold}}, $transcript_name;
+         print STDERR "Adding transcript ${transcript_name} to list for scaffold ${scaffold}\n" if $debug > 2;
       }
 
       #If the strand of the transcript (and thus the CDSes) is -, we denote
@@ -185,6 +212,7 @@ while (my $line = <$gff_fh>) {
       }
       #Add this CDS' length to the isoform length sum:
       $isoform_length{$transcript_name} += $end - $start + 1;
+      print STDERR "Transcript ${transcript_name} is of length ", $isoform_length{$transcript_name}, "\n" if $debug > 1;
    }
 }
 
@@ -202,6 +230,8 @@ for my $gene (sort keys %gene_tx_map) {
       }
    }
    $longest_isoform{$max_len_id} = undef;
+   print STDERR "Longest isoform for gene ${gene} is ${max_len_id}\n" if $debug > 1 and $max_len_id ne "";
+   print STDERR "No isoforms found for gene ${gene}\n" if $debug > 1 and $max_len_id eq "";
 }
 
 #As extra output, we can output a CDS range string, which translates
@@ -265,10 +295,12 @@ while (my $line = <$genome_fh>) {
                $constructed_CDS .= $exon;
             }
             next if $longest_only and !exists($longest_isoform{$CDS});
+            print STDERR "Outputting spliced sequence for transcript ${CDS} of type ", $tx_types{$CDS}, "\n" if $debug > 1 and exists($tx_types{$CDS});
+            print STDERR "Not outputting spliced sequence for transcript ${CDS} without saved type.\n" if $debug > 2 and !exists($tx_types{$CDS});
             #Output the FASTA record of the CDS to STDOUT:
-            print STDOUT ">", $header_prefix, $CDS, "\n", $constructed_CDS, "\n";
-            print STDOUT $scaffold_name, "=", $exon_range_string, "\n" if $output_exon_range_strings;
-            print STDOUT $scaffold_name, "=", computeCDSRangeString($exon_range_string), "\n" if $output_exon_range_strings;
+            print STDOUT ">", $header_prefix, $CDS, "\n", $constructed_CDS, "\n" if exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
+            print STDOUT $scaffold_name, "=", $exon_range_string, "\n" if $output_exon_range_strings and exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
+            print STDOUT $scaffold_name, "=", computeCDSRangeString($exon_range_string), "\n" if $output_exon_range_strings and exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
          }
       }
       #Only use the part of the name before the first space:
@@ -300,10 +332,12 @@ if (exists($CDSes_per_scaffold{$scaffold_name})) {
          $constructed_CDS .= $exon;
       }
       unless ($longest_only and !exists($longest_isoform{$CDS})) {
+         print STDERR "Outputting spliced sequence for transcript ${CDS} of type ", $tx_types{$CDS}, "\n" if $debug > 1 and exists($tx_types{$CDS});
+         print STDERR "Not outputting spliced sequence for transcript ${CDS} without saved type.\n" if $debug > 2 and !exists($tx_types{$CDS});
          #Output the FASTA record of the CDS to STDOUT:
-         print STDOUT ">", $header_prefix, $CDS, "\n", $constructed_CDS, "\n";
-         print STDOUT $scaffold_name, "=", $exon_range_string, "\n" if $output_exon_range_strings;
-         print STDOUT $scaffold_name, "=", computeCDSRangeString($exon_range_string), "\n" if $output_exon_range_strings;
+         print STDOUT ">", $header_prefix, $CDS, "\n", $constructed_CDS, "\n" if exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
+         print STDOUT $scaffold_name, "=", $exon_range_string, "\n" if $output_exon_range_strings and exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
+         print STDOUT $scaffold_name, "=", computeCDSRangeString($exon_range_string), "\n" if $output_exon_range_strings and exists($tx_types{$CDS}) and $tx_types{$CDS} eq $tx_type;
       }
    }
 }

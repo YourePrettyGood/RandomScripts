@@ -12,6 +12,8 @@ Getopt::Long::Configure qw(gnu_getopt);
 # Version 1.2 (2017/06/08) Added file option for config string                          #
 # Version 1.3 (2018/07/25) Added proper interpretation of N and U in AGP                #
 # Version 1.4 (2018/11/15) Handle of IUPAC bases in revcomp, and keep input contig order#
+# Version 1.5 (2019/10/20) Allow customization of fixed gap size for config string mode #
+#                          Enables GenBank-compatible scaffolding (gap_size=100)        #
 # Description:                                                                          #
 # This script concatenates contigs together into a scaffold based on a configuration    #
 # string, separating contigs by 500 Ns.  The configuration string consists of contig    #
@@ -20,21 +22,28 @@ Getopt::Long::Configure qw(gnu_getopt);
 # name and a colon (:), and scaffolds are delimited by =>.                              #
 # As of version 1.3, if you supply an AGP, N and U gap records are interpreted according#
 # to the AGP version 2.0 specification.                                                 #
+# Version 1.5 enables modifying the fixed gap size in config string mode, so that       #
+# -g 100 would fit with GenBank expectations.                                           #
 #                                                                                       #
 # Usage:                                                                                #
 #  manualScaffold.pl [-i input_contigs.fasta] <Configuration String>                    #
 # Options:                                                                              #
-#  --input_file,-i:   		Input contigs FASTA file name (default: STDIN)          #
-#  --config_string,-c:		File containing long configuration string               #
-#  --agp_file,-a:   		Input AGP file name                                     #
-#
+#  --help,-h,-?          Display this help documentation                                 #
+#  --input_file,-i:      Input contigs FASTA file name (default: STDIN)                  #
+#  --config_string,-c:   File containing long configuration string                       #
+#  --agp_file,-a:        Input AGP file name                                             #
+#  --unscaffolded,-u	 Output unscaffolded contigs individually at the end             #
+#  --gap_size,-g         Fixed gap size to insert (for config string only)              #
+#                        (Default: 500)                                                  #
+#  --version,-v          Output version string                                          #
+#                                                                                       #
 #  Configuration String:	Format string composed as follows:                      #
 #				[Scaffold name]:[contig name 1]->[contig name 2]->      #
 #				[contig name 3]*->[contig name 4]=>[Scaffold name]      #
 #########################################################################################
 
 my $SCRIPTNAME = "manualScaffold.pl";
-my $VERSION = "1.4";
+my $VERSION = "1.5";
 
 =pod
 
@@ -52,6 +61,8 @@ manualScaffold.pl [options] <Configuration String>
   --config_string,-c    File containing long configuration string (optional)
   --agp_file,-a		Input AGP file (instead of configuration string)
   --unscaffolded,-u	Output unscaffolded contigs individually at the end
+  --gap_size,-g         Fixed gap size to insert (for config string only)
+                        (Default: 500)
   --version,-v          Output version string
 
  Mandatory:
@@ -72,6 +83,8 @@ between contigs in a scaffold.  Each scaffold is prefixed with the desired outpu
 name and a colon (:), and scaffolds are delimited by =>.
 As of version 1.3, if you supply an AGP, this script will interpret N and U records
 as per the AGP version 2.0 specification, rather than forcing N of 500 bp.
+Version 1.5 adds the ability to specify a fixed gap size other than 500 when using
+a config string. However, AGP mode still uses 100 Ns for U records.
 Outputs the scaffolds to STDOUT.
 
 =cut
@@ -91,13 +104,17 @@ my $unscaffolded = 0;
 my $config_string = "";
 my $agp_file = "";
 my $config_string_file = "";
+my $default_gap_size = 500;
 my $dispversion = 0;
-GetOptions('input_file|i=s' => \$input_path, 'config_string|c=s' => \$config_string_file, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'help|h|?+' => \$help, man => \$man, 'version|v' => \$dispversion) or pod2usage(2);
+GetOptions('input_file|i=s' => \$input_path, 'config_string|c=s' => \$config_string_file, 'agp_file|a=s' => \$agp_file, 'unscaffolded|u' => \$unscaffolded, 'gap_size|g=i' => \$default_gap_size, 'help|h|?+' => \$help, man => \$man, 'version|v' => \$dispversion) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
+
+print STDERR "Invalid gap size ${default_gap_size}, must be non-negative.\n" unless $default_gap_size >= 0;
+exit 5 unless $default_gap_size >= 0;
 
 my $contigsfh;
 if ($input_path ne "STDIN") {
@@ -110,7 +127,6 @@ if ($input_path ne "STDIN") {
 }
 
 my %scaffold_gaps = (); #Store gaps between contigs from AGP
-my $default_gap_size = 500;
 
 if ($agp_file eq "") {
    if (scalar @ARGV < 1) { #Not enough mandatory arguments

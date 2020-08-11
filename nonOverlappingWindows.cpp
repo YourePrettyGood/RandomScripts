@@ -6,6 +6,7 @@
  * Version 1.2 written 2018/08/22 Bugfix for header and nonzero omitted stat*
  *   as well as handling a custom statistic column                          *
  * Version 1.3 written 2018/11/08 Filter or use non-N fraction as weight    *
+ * Version 1.4 written 2020/01/10 Output sum and denominator if requested   *
  * Description:                                                             *
  *  Calculates the mean of a statistic over non-overlapping windows of      *
  *  user-defined length, and can adjust the denominator of the mean based   *
@@ -30,6 +31,7 @@
  *          (default: 3, cannot be 1 or 4)                                  *
  *  -f:     Minimum non-N fraction to include in average                    *
  *  -a:     Calculate weighted average using non-N fraction as weight       *
+ *  -d:     Output debugging information, including sum and denominator     *
  ****************************************************************************/
 
 #include <iostream>
@@ -48,10 +50,10 @@
 #define optional_argument 2
 
 //Version:
-#define version "1.3"
+#define version "1.4"
 
 //Usage/help:
-#define usage "nonOverlappingWindows\nUsage:\n nonOverlappingWindows [options]\n Options:\n  --input_tsv,-i\tPath to input TSV (default: STDIN)\n  --output_tsv,-o\tPath to output TSV (default: STDOUT)\n  --omit_n,-n\t\tOmit sites indicated in the filter (4th) column\n  --window_size,-w\tSize of the non-overlapping windows\n  --usable_fraction,-u\tOutput the fraction of usable sites in\n\t\t\teach window as column 4\n  --stat_column,-s\tUse this column as the statistic to summarize\n\t\t(default: 3, cannot be 1 or 4)\n  --infimum_nonN,-f\tInfimum fraction of non-Ns to include in average\n\t\t(i.e. include sites with non-N fraction > this value)\n\t\tAssumes column 4 is fraction of non-N bases at site\n  --weighted_average,-a\tCalculate weighted average based on non-N fraction\n\t\tAssumes column 4 is the fraction of non-N bases at the site\n\n Description:\n  Calculates the mean of a statistic over non-overlapping windows\n  across scaffolds in a genome. Sites may be omitted from the average.\n  Input is a 3- or 4-column TSV consisting of scaffold name,\n  position, statistic, and a filter column.\n  If the filter column is 1 and -n is set, the row is omitted from the average.\n  If the fourth column is the fraction of non-N bases,\n  sites may be omitted based on an infimum filter (-f),\n  or a weighted average may be calculated (-a).\n  If the scaffold length is not an integral multiple of the window size,\n  the last window's average is scaled appropriately.\n"
+#define usage "nonOverlappingWindows\nUsage:\n nonOverlappingWindows [options]\n Options:\n  --input_tsv,-i\tPath to input TSV (default: STDIN)\n  --output_tsv,-o\tPath to output TSV (default: STDOUT)\n  --omit_n,-n\t\tOmit sites indicated in the filter (4th) column\n  --window_size,-w\tSize of the non-overlapping windows\n  --usable_fraction,-u\tOutput the fraction of usable sites in\n\t\t\teach window as column 4\n  --stat_column,-s\tUse this column as the statistic to summarize\n\t\t(default: 3, cannot be 1 or 4)\n  --infimum_nonN,-f\tInfimum fraction of non-Ns to include in average\n\t\t(i.e. include sites with non-N fraction > this value)\n\t\tAssumes column 4 is fraction of non-N bases at site\n  --weighted_average,-a\tCalculate weighted average based on non-N fraction\n\t\tAssumes column 4 is the fraction of non-N bases at the site\n  --debug,-d\t\tOutput debugging information, including sum and denominator as extra columns\n\n Description:\n  Calculates the mean of a statistic over non-overlapping windows\n  across scaffolds in a genome. Sites may be omitted from the average.\n  Input is a 3- or 4-column TSV consisting of scaffold name,\n  position, statistic, and a filter column.\n  If the filter column is 1 and -n is set, the row is omitted from the average.\n  If the fourth column is the fraction of non-N bases,\n  sites may be omitted based on an infimum filter (-f),\n  or a weighted average may be calculated (-a).\n  If the scaffold length is not an integral multiple of the window size,\n  the last window's average is scaled appropriately.\n"
 
 using namespace std;
 
@@ -128,6 +130,9 @@ string calcDepths(vector<double> &statistics, string scaffold, unsigned long win
          if (usable_fraction) {
             output += '\t' + to_string(denominator/window_size);
          }
+         if (debug) {
+            output += '\t' + to_string(sum) + '\t' + to_string(denominator);
+         }
          output += '\n';
          sum = 0.0;
          denominator = 0.0;
@@ -147,6 +152,9 @@ string calcDepths(vector<double> &statistics, string scaffold, unsigned long win
       }
       if (usable_fraction) {
          output += '\t' + to_string(denominator/last_window);
+      }
+      if (debug) {
+         output += '\t' + to_string(sum) + '\t' + to_string(denominator);
       }
       output += '\n';
    }
@@ -200,6 +208,7 @@ int main(int argc, char **argv) {
             return 0;
             break;
          case 'd':
+            cerr << "Debugging mode enabled, outputting sum and denominator columns" << endl;
             debug = 1;
             break;
          case 'i':

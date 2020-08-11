@@ -8,7 +8,11 @@ Getopt::Long::Configure qw(gnu_getopt);
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
 my $SCRIPTNAME = "subsetVCFstats.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
+#Version 1.1 written 2019/12/30
+#Updated to account for BED besides BED3, and bail out if lines
+# don't have enough fields (was generating stupidly large log
+# files previously when fed invalid input).
 
 =pod
 
@@ -56,14 +60,22 @@ print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
 my $bed_file;
-open $bed_file, "<", $bed_path or die "Failed to open input BED file ${bed_path} due to error $!";
+unless (open($bed_file, "<", $bed_path)) {
+   print STDERR "Failed to open input BED file ${bed_path} due to error $!\n";
+   exit 1;
+}
 
 print STDERR "Reading BED file ${bed_path}\n" if $debug;
 my %query_starts = ();
 my %query_ends = ();
 while (my $line = <$bed_file>) {
    chomp $line;
-   my ($chrom, $bedstart, $end) = split /\t/, $line, 3;
+   my @bed_elems = split /\t/, $line;
+   my ($chrom, $bedstart, $end) = @bed_elems[0 .. 2];;
+   unless (defined($chrom) and defined($bedstart) and defined($end)) {
+      print STDERR "BED file line does not have the appropriate number of fields: $line\n";
+      exit 3;
+   }
    $query_starts{$chrom} = [] unless exists($query_starts{$chrom});
    $query_ends{$chrom} = [] unless exists($query_ends{$chrom});
    push @{$query_starts{$chrom}}, $bedstart+1;
@@ -74,10 +86,13 @@ close($bed_file);
 
 print STDERR "Processing stats file ${stats_path}\n" if $debug;
 my $stats_file;
-if ($stats_path eq '-' or $stats_path eq '') {
+if ($stats_path eq '-' or $stats_path eq '' or $stats_path eq "STDIN") {
    open $stats_file, "<&", \*STDIN or die "Failed to duplicate STDIN file handle for input stats TSV file due to error $!";
 } else {
-   open $stats_file, "<", $stats_path or die "Failed to open input VCF stats TSV file ${stats_path} due to error $!";
+   unless(open($stats_file, "<", $stats_path)) {
+      print STDERR "Failed to open input VCF stats TSV file ${stats_path} due to error $!\n";
+      exit 2;
+   }
 }
 my $interval_index = 0;
 my $prev_chrom = "";
@@ -85,6 +100,11 @@ while (my $line = <$stats_file>) {
    chomp $line;
    next if $line =~ /^#/; #Skip header line or any comment lines
    my ($chrom, $pos, $rest) = split /\t/, $line, 3;
+   #Bail out of parsing if the line doesn't have the correct number of fields:
+   unless (defined($chrom) and defined($pos) and defined($rest)) {
+      print STDERR "Stats file line does not have the appropriate number of fields: $line\n";
+      exit 4;
+   }
    #Reset the interval index for each new scaffold:
    $interval_index = 0 unless $chrom eq $prev_chrom;
    $prev_chrom = $chrom;

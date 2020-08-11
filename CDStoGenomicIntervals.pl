@@ -6,17 +6,20 @@ use Pod::Usage;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 
-################################################################
-#                                                              #
-# Version 1.1 (2019/04/12) Non-greedy regex for Parent         #
-################################################################
+########################################################################
+#                                                                      #
+# Version 1.1 (2019/04/12) Non-greedy regex for Parent                 #
+# Version 1.2 (2019/10/01) Allow features other than CDS               #
+#                          Workaround for GFFs with exons but no CDSes #
+# Version 1.3 (2019/11/21) Support BED with >3 columns                 #
+########################################################################
 
 #First pass script to translate BED intervals in CDS space to
 # genomic space based on a GFF3
 #Assumes sorted order of records within a gene in a GFF3
 
 my $SCRIPTNAME = "CDStoGenomicIntervals.pl";
-my $VERSION = "1.1";
+my $VERSION = "1.3";
 
 =pod
 
@@ -33,6 +36,7 @@ CDStoGenomicIntervals.pl [options]
   --input_BED,-i         Path to input BED file in CDS-space
                          (default: STDIN)
   --gff3_file,-g         Path to genome annotation GFF3 file
+  --feature,-f           Name of GFF3 feature to splice (default: CDS)
   --debug,-d             Extra debugging output
   --version,-v           Output version string
 
@@ -41,20 +45,27 @@ CDStoGenomicIntervals.pl [options]
 This script converts BED intervals in CDS space to BED intervals in
 genomic space using a GFF3.
 
+Optionally, it can convert intervals in exon space (i.e. the GFF3
+lacks CDS records) by specifying -f exon.
+
 =cut
 
 my $help = 0;
 my $man = 0;
 my $bed_path = "STDIN";
 my $gff3_path = "";
+my $feature_type = "CDS";
 my $debug = 0;
 my $dispversion = 0;
-GetOptions('input_BED|i=s' => \$bed_path, 'gff3_file|g=s' => \$gff3_path, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_BED|i=s' => \$bed_path, 'gff3_file|g=s' => \$gff3_path, 'feature|f=s' => \$feature_type, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
+
+print STDERR "Unsupported feature type ${feature_type}, please use CDS or exon\n" unless $feature_type eq "CDS" or $feature_type eq "exon";
+exit 4 unless $feature_type eq "CDS" or $feature_type eq "exon";
 
 #Open the CDS-space BED file, or set it up to be read from STDIN:
 my $bedfh;
@@ -93,7 +104,7 @@ while (my $line = <$gff_fh>) {
    next if $FASTA_skip;
    next if $line =~ /^#/; #Skip comment lines
    my ($scaffold, $set, $type, $start, $end, $score, $strand, $frame, $tag_string) = split /\t/, $line, 9;
-   next unless $type eq "CDS";
+   next unless $type eq $feature_type;
    my @transcript_names = ();
    if ($tag_string =~ /Parent=(.+?)(?:;|$)/i) {
       @transcript_names = split /,/, $1;
@@ -149,7 +160,8 @@ for my $transcript (keys %ers) {
 print STDERR "Reading ${bed_path} and converting intervals to genome-space\n";
 while (my $line = <$bedfh>) {
    chomp $line;
-   my ($transcript, $BEDstart, $BEDend) = split /\t/, $line, 3;
+   my @bed_parts = split /\t/, $line;
+   my ($transcript, $BEDstart, $BEDend) = @bed_parts[0..2];
    my %query = ("start" => $BEDstart+1, "end" => $BEDend);
    print STDERR "Contents of %query: ", $query{'start'}, " ", $query{'end'}, "\n" if $debug > 1;
    unless (exists($transcript_scaffold_map{$transcript}) and exists($ers{$transcript})) {

@@ -12,9 +12,10 @@ Getopt::Long::Configure qw(gnu_getopt);
 # versa (with the --invert flag).
 #If an AGP from contigs to scaffolds is provided, a contig-space GFF3 could be
 # converted to a scaffold-space GFF3, or vice versa (with the --invert flag).
+#Version 1.1 adds compatibility with converting coordinates for BED files
 
 my $SCRIPTNAME = "ScaffoldGFF3.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -24,7 +25,7 @@ ScaffoldGFF3.pl - Convert GFF3 between coordinate spaces defined by an AGP
 
 =head1 SYNOPSIS
 
-ScaffoldGFF3.pl -a [AGP file] -g [Source GFF3 file] [--invert] [--broken <Broken GFF3 file>] > [Destination GFF3 file]
+ScaffoldGFF3.pl -a [AGP file] -g [Source GFF3 file] [-m <BED file>] [--invert] [--broken <Broken GFF3 file>] > [Destination GFF3 file]
 
  Options:
   --help,-h,-?	        Display this help documentation
@@ -34,6 +35,8 @@ ScaffoldGFF3.pl -a [AGP file] -g [Source GFF3 file] [--invert] [--broken <Broken
  Mandatory:
   --agp,-a		AGP file for e.g. mapping scaffolds to chromosomes
   --gff,-g		GFF3 file of features in e.g. scaffold-space
+  --bed,-m              BED file of features in e.g. scaffold-space
+                        (i.e. convert BED rather than GFF)
 
 =head1 DESCRIPTION
 
@@ -49,27 +52,28 @@ my $man = 0;
 my $debug = 0;
 my $input_agp = "";
 my $input_gff = "";
+my $input_bed = "";
 my $invert = 0;
 my $broken_gff3 = "";
 my $dispversion = 0;
 
 #Fetch the command line parameters
-GetOptions('version|v' => \$dispversion, 'help|h|?+' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, 'invert|i' => \$invert, 'broken|b=s' => \$broken_gff3, 'debug|d+' => \$debug, man => \$man) or pod2usage(2);
+GetOptions('version|v' => \$dispversion, 'help|h|?+' => \$help, 'agp|a=s' => \$input_agp, 'gff|g=s' => \$input_gff, 'invert|i' => \$invert, 'broken|b=s' => \$broken_gff3, 'bed|m=s' => \$input_bed, 'debug|d+' => \$debug, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
 
-pod2usage(-exitval => 2, -output => \*STDERR) if $input_agp eq "" or $input_gff eq "";
+pod2usage(-exitval => 2, -output => \*STDERR) if $input_agp eq "" or ($input_gff eq "" and $input_bed eq "");
 
 #Make sure the required parameters are filled out correctly
 unless (-e $input_agp) {
-   print STDERR "The AGP input file does not exist.\n";
+   print STDERR "The AGP input file ${input_agp} does not exist.\n";
    exit 3;
 }
-unless (-e $input_gff) {
-   print STDERR "The GFF3 input file does not exist.\n";
+unless (($input_gff ne "" and -e $input_gff) or ($input_bed ne "" and -e $input_bed)) {
+   print STDERR "The GFF3 (${input_gff}) or BED (${input_bed}) input file does not exist.\n";
    exit 4;
 }
 
@@ -114,6 +118,7 @@ sub contigToScaffold($$$$$$) {
       $feature_start_scaf = $feature_start - $ctg_start + $scaf_part_start;
       $feature_end_scaf = $feature_end - $ctg_start + $scaf_part_start;
    }
+   print STDERR join("\t", $feature_start, $feature_end, $feature_start_scaf, $feature_end_scaf, $ctg_start, $ctg_end, $scaf_part_start, $scaf_part_end, $ctg_orientations[$ctg_index], $ctg_index), "\n" if $debug > 2;
    return "${feature_start_scaf}-${feature_end_scaf}(${strand})";
 }
 
@@ -156,6 +161,7 @@ sub scaffoldToContig($$$$$$) {
       $feature_ctg_end = $feature_end + $ctg_start - $scaf_part_start;
    }
    my $ctg = $ctg_list[$ctg_index];
+   print STDERR join("\t", $feature_start, $feature_end, $feature_ctg_start, $feature_ctg_end, $ctg_start, $ctg_end, $scaf_part_start, $scaf_part_end, $ctg_orientations[$ctg_index], $ctg_index, $ctg), "\n" if $debug > 2;
    return "${ctg}:${feature_ctg_start}-${feature_ctg_end}(${strand})";
 }
 
@@ -176,6 +182,7 @@ open($agp_fh, "<", $input_agp);
 while (!eof($agp_fh)) {
    my $line = <$agp_fh>;
    next if $line =~ /^#/;
+   chomp $line;
    my @agp_parts = split /\t/, $line;
    next if $agp_parts[4] eq "N" or $agp_parts[4] eq "U"; #Skip gap lines
    
@@ -228,23 +235,29 @@ if ($invert) { #Make potentially truncated unscaffolded headers
 #Read through the GFF3, and modify the chromosome/scaffold, start, end, and
 # orientation fields according to the hashes derived from the AGP:
 my @gff_headers = ();
-print STDERR "Converting input GFF3 to new coordinate space\n";
+print STDERR "Converting input GFF3 to new coordinate space\n" unless $input_bed ne "";
+
+#Allow for BED input and output:
+my $broken_ext;
+$broken_ext = "gff3?" if $input_gff ne "";
+$broken_ext = "bed" if $input_bed ne "";
 
 #Open the output GFF3 for broken features if one was provided:
 my $broken_fh;
-if ($broken_gff3 =~ /\.gff3?$/) {
+if ($broken_gff3 =~ /\.${broken_ext}$/) {
    open($broken_fh, ">", $broken_gff3);
 }
 
 my $headers_needed = 0; #Only output headers once
 my $gff_fh;
-open($gff_fh, "<", $input_gff);
+open($gff_fh, "<", $input_gff) if $input_gff ne "";
+open($gff_fh, "<", $input_bed) if $input_bed ne "" and $input_gff eq "";
 while (!eof($gff_fh)) {
    my $line = <$gff_fh>;
+   chomp $line;
    #Accumulate headers
    if ($line =~ /^##/) {
-      print $broken_fh $line if $broken_gff3 =~ /\.gff3?$/;
-      chomp $line;
+      print $broken_fh $line, "\n" if $broken_gff3 =~ /\.${broken_ext}$/ and $input_gff ne "";
       push @gff_headers, $line unless $line =~ /sequence-region/;
       if ($line =~ /sequence-region/) {
          my ($headertype, $seqid, $seq_start, $seq_end) = split /\s+/, $line, 4;
@@ -257,12 +270,12 @@ while (!eof($gff_fh)) {
    if ($line !~ /^##/ and $headers_needed == 0) {
       if (scalar(@gff_headers) > 0) {
          #Output the accumulated headers:
-         print STDOUT join("\n", @gff_headers), "\n";
+         print STDOUT join("\n", @gff_headers), "\n" if $input_gff ne "";
 #         print $broken_fh join("\n", @gff_headers), "\n" if $broken_gff3 =~ /\.gff3?$/;
       }
       #Output the sorted revised headers:
       for my $scaf (sort keys %revised_gff3_headers) {
-         print STDOUT $revised_gff3_headers{$scaf}, "\n";
+         print STDOUT $revised_gff3_headers{$scaf}, "\n" if $input_gff ne "";
 #         print $broken_fh $revised_gff3_headers{$scaf}, "\n" if $broken_gff3 =~ /\.gff3?$/;
       }
       @gff_headers = ();
@@ -277,16 +290,25 @@ while (!eof($gff_fh)) {
       print STDOUT "#${seqid} not mapped to a chromosome\n" if $debug;
       next;
    }
-   my $feature_start = $gff_parts[3];
-   my $feature_end = $gff_parts[4];
-   my $feature_orientation = $gff_parts[6];
-   chomp $gff_parts[8];
-   my @feature_tags = split /;/, $gff_parts[8];
-   my ($id, $parent) = ('', '');
-   for my $tag (@feature_tags) {
-      my ($tag_name, $tag_value) = split /=/, $tag, 2;
-      $id = $tag_value if $tag_name eq "ID";
-      $parent = $tag_value if $tag_name eq "Parent";
+   #Parse a record:
+   my ($feature_start, $feature_end, $feature_orientation, $id, $parent);
+   ($id, $parent) = ('', '');
+   if ($input_gff ne "") { #Parse GFF record
+      $feature_start = $gff_parts[3];
+      $feature_end = $gff_parts[4];
+      $feature_orientation = $gff_parts[6];
+#      chomp $gff_parts[8];
+      my @feature_tags = split /;/, $gff_parts[8];
+      for my $tag (@feature_tags) {
+         my ($tag_name, $tag_value) = split /=/, $tag, 2;
+         $id = $tag_value if $tag_name eq "ID";
+         $parent = $tag_value if $tag_name eq "Parent";
+      }
+   } elsif ($input_bed ne "") { #Parse BED record
+      $feature_start = $gff_parts[1]+1;
+      $feature_end = $gff_parts[2];
+      $feature_orientation = scalar(@gff_parts) >= 6 ? $gff_parts[5] : "+";
+#      chomp $gff_parts[$#gff_parts];
    }
    
    #Perform the conversions:
@@ -296,7 +318,7 @@ while (!eof($gff_fh)) {
       my $ctg_coordinates = scaffoldToContig($scaf_coordinates, $scaf_ctg_map{$seqid}, $ctg_intervals{$seqid}, $scaf_intervals{$seqid}, $ctg_orientations{$seqid}, $debug);
       #Check if this feature is broken, if so output to broken GFF3:
       unless (defined($ctg_coordinates) and !exists($broken_features{$parent})) {
-         print $broken_fh $line if $broken_gff3 =~ /\.gff3?$/;
+         print $broken_fh $line, "\n" if $broken_gff3 =~ /\.${broken_ext}$/;
          print STDERR join("\t", $seqid, $scaf_coordinates, $id, defined($ctg_coordinates) ? "Valid coords" : "Invalid coords", exists($broken_features{$parent}) ? $parent : "Does not have broken parent"), "\n" if $debug > 1;
          $broken_features{$id} = 1 unless $id eq "";
          next; #Skip the print outside the if when it's broken
@@ -307,16 +329,22 @@ while (!eof($gff_fh)) {
       $strand = substr($strand, 0, -1);
       my ($ctg_start, $ctg_end) = split /-/, $ctg_interval, 2;
       $gff_parts[0] = $ctg;
-      $gff_parts[3] = $ctg_start;
-      $gff_parts[4] = $ctg_end;
-      $gff_parts[6] = $strand;
+      if ($input_gff ne "") {
+         $gff_parts[3] = $ctg_start;
+         $gff_parts[4] = $ctg_end;
+         $gff_parts[6] = $strand;
+      } elsif ($input_bed ne "") {
+         $gff_parts[1] = $ctg_start-1;
+         $gff_parts[2] = $ctg_end;
+         $gff_parts[5] = $strand if scalar(@gff_parts) >= 6;
+      }
    } else { #Contig to scaffold
       my $ctg_coordinates = "${seqid}:${feature_start}-${feature_end}(${feature_orientation})";
       my $scaf = $ctg_scaf_map{$seqid};
       my $scaf_coordinates = contigToScaffold($ctg_coordinates, $scaf_ctg_map{$scaf}, $ctg_intervals{$scaf}, $scaf_intervals{$scaf}, $ctg_orientations{$scaf}, $debug);
       #Check if this feature is broken, if so output to broken GFF3:
       unless (defined($scaf_coordinates) and !exists($broken_features{$parent})) {
-         print $broken_fh $line if $broken_gff3 =~ /\.gff3?$/;
+         print $broken_fh $line, "\n" if $broken_gff3 =~ /\.${broken_ext}$/;
          print STDERR join("\t", $seqid, $ctg_coordinates, $id, defined($scaf_coordinates) ? "Valid coords" : "Invalid coords", exists($broken_features{$parent}) ? $parent : "Does not have broken parent"), "\n" if $debug > 1;
          $broken_features{$id} = 1 unless $id eq "";
          next; #Skip the print outside the if when it's broken
@@ -325,16 +353,22 @@ while (!eof($gff_fh)) {
       $strand = substr($strand, 0, -1);
       my ($scaf_start, $scaf_end) = split /-/, $scaf_interval, 2;
       $gff_parts[0] = $scaf;
-      $gff_parts[3] = $scaf_start;
-      $gff_parts[4] = $scaf_end;
-      $gff_parts[6] = $strand;
+      if ($input_gff ne "") {
+         $gff_parts[3] = $scaf_start;
+         $gff_parts[4] = $scaf_end;
+         $gff_parts[6] = $strand;
+      } elsif ($input_bed ne "") {
+         $gff_parts[1] = $scaf_start-1;
+         $gff_parts[2] = $scaf_end;
+         $gff_parts[5] = $strand if scalar(@gff_parts) >= 6;
+      }
    }
 
    #Print the modified GFF line:
    print STDOUT join("\t", @gff_parts), "\n";
 }
 close($gff_fh);
-close($broken_fh) if $broken_gff3 =~ /\.gff3?$/;
+close($broken_fh) if $broken_gff3 =~ /\.${broken_ext}$/;
 print STDERR "Done converting GFF3 to new coordinate space\n";
 
 exit 0;

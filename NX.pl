@@ -8,7 +8,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
 my $SCRIPTNAME = "NX.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -37,6 +37,7 @@ NX.pl [options] <FASTA> [X] [G]
                        (Or specify as 2nd positional argument)
                        May be comma-separated list of quantiles
                        (Default: 50)
+  --tsv_output,-t      Output statistics in TSV format (with header line)
   --debug,-d           Output extra information to STDERR
   --version,-v         Output version string
 
@@ -65,6 +66,7 @@ my $customsum = 0;
 my $NG = 0;
 my $seqlen;
 my $numseqs = 0;
+my $tsvout = 0;
 my $help = 0;
 my $man = 0;
 my $debug = 0;
@@ -76,7 +78,7 @@ my $dispversion = 0;
 #Thus, the NG50 is calculated as ./NX.pl [FASTA file] 50 [genome size], and the NR25 is calculated as
 #./NX.pl [read file] 100 [25*genome size]
 
-GetOptions('genome_size|g=i' => \$customsum, 'genome_percent|p=i' => \$X, 'debug|d+' => \$debug, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('genome_size|g=i' => \$customsum, 'genome_percent|p=i' => \$X, 'tsv_output|t' => \$tsvout, 'debug|d+' => \$debug, 'version|v' => \$dispversion, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -output => \*STDERR, -verbose => 2) if $man;
 
@@ -154,9 +156,9 @@ while (my $record = <$contigfile>) {
 }
 close $contigfile;
 print STDERR "Finished reading contig file\n" if $debug;
-print "Total sum of lengths of contigs is $contiglensum\n";
+print "Total sum of lengths of contigs is $contiglensum\n" unless $tsvout;
 print STDERR "Now sorting the contig length array\n" if $debug;
-my $arrlen = scalar@contiglensarr;
+my $arrlen = scalar(@contiglensarr);
 print STDERR "Contig length array has $arrlen elements\n" if $debug;
 
 my @sortedcontiglens = sort {$b <=> $a} @contiglensarr;
@@ -167,6 +169,8 @@ my @sorted_quantiles = sort @Xs;
 #my $Xstr = $customsum > 0 ? "G" . $X : $X;
 $customsum = $customsum > 0 ? $customsum : $contiglensum;
 #print STDERR "Now calculating N", $Xstr, " value\n" if $debug;
+my %NX = () if $tsvout;
+my %LX = () if $tsvout;
 my $curlen = 0;
 my $curctg = 0; #For LX
 OUTERLOOP: for (my $l = 0; $l < $arrlen; $l++) {
@@ -175,8 +179,10 @@ OUTERLOOP: for (my $l = 0; $l < $arrlen; $l++) {
       $curlen = $curlen + $sortedcontiglens[$l];
       while ($curlen >= ($customsum * $sorted_quantiles[0] / 100)) {
          my $Xstr = $NG > 0 ? "G" . $sorted_quantiles[0] : $sorted_quantiles[0];
-         print "N", $Xstr, ": ", $sortedcontiglens[$l], "\n";
-         print "L", $Xstr, ": ", $curctg, "\n";
+         $NX{"N".$Xstr} = $sortedcontiglens[$l] if $tsvout;
+         print "N${Xstr}: ", $sortedcontiglens[$l], "\n" unless $tsvout;
+         $LX{"L".$Xstr} = $curctg if $tsvout;
+         print "L${Xstr}: ${curctg}\n" unless $tsvout;
          shift @sorted_quantiles; #Use up the quantiles as they are evaluated
          last OUTERLOOP if scalar(@sorted_quantiles) == 0;
       }
@@ -184,11 +190,21 @@ OUTERLOOP: for (my $l = 0; $l < $arrlen; $l++) {
 }
 #Extra features:
 if ($numseqs > 0) {
-   print "Shortest contig: ", $sortedcontiglens[$#sortedcontiglens], "\n";
-   print "Longest contig: ", $sortedcontiglens[0], "\n";
-   print "Number of contigs: ", $numseqs, "\n";
-   print "Average contig: ", $contiglensum / $numseqs, "\n";
-   print "Number of Ns: ", $Ncount, "\n";
+   my $shortest = $sortedcontiglens[$#sortedcontiglens]; #Sort is descending, so shortest is last
+   my $longest = $sortedcontiglens[0]; #Sort is descending, so longest is first
+   my $average = $contiglensum / $numseqs;
+   if ($tsvout) {
+      print join("\t", "AsmSize", sort(keys(%NX)), sort(keys(%LX)), "Shortest", "Longest", "Number", "Average", "Ns"), "\n";
+      my @NXs = map { $NX{$_} } sort(keys(%NX));
+      my @LXs = map { $LX{$_} } sort(keys(%LX));
+      print join("\t", $contiglensum, @NXs, @LXs, $shortest, $longest, $numseqs, $average, $Ncount), "\n";
+   } else {
+      print "Shortest contig: ${shortest}\n";
+      print "Longest contig: ${longest}\n";
+      print "Number of contigs: ${numseqs}\n";
+      print "Average contig: ${average}\n";
+      print "Number of Ns: ${Ncount}\n";
+   }
 } else {
    die "No contigs/scaffolds provided\n";
    #print "N", $Xstr, ": 0\n";

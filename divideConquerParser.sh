@@ -3,6 +3,8 @@
 #Divides an input Illumina readset into n parts
 #then parses the parts using n cores
 #and finally combines the n parts of each parsed dataset
+#Bypass the decompress to split and recompress steps by using
+# --filter for split (2019/11/18)
 
 #Read in the command line arguments:
 NUMFILES=$1
@@ -60,14 +62,16 @@ echo "Splitting read files into parts with ${READSPERPART} reads or less."
 #Split the files into parts with names similar to the input filename (using a 2 digit number to indicate the part):
 for READFILE in "${READFILES[@]}"; do
    FILEPREFIX=${READFILE//.fastq.gz/_}
-   gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} - ${FILEPREFIX}
-   echo "gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} - ${FILEPREFIX}"
+#   gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} - ${FILEPREFIX}
+#   echo "gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} - ${FILEPREFIX}"
    #Make sure to gzip the split output so that barcode_splitter.py doesn't whine:
-   for ((i=0;i<NUMPARTS;i++)); do
-      printf -v I "%02d" ${i}
-      gzip ${FILEPREFIX}${I}
-      echo "gzip ${FILEPREFIX}${I}"
-   done
+#   for ((i=0;i<NUMPARTS;i++)); do
+#      printf -v I "%02d" ${i}
+#      gzip ${FILEPREFIX}${I}
+#      echo "gzip ${FILEPREFIX}${I}"
+#   done
+   echo "gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} --filter='gzip > $FILE.gz' - ${FILEPREFIX}"
+   gzip -dcf ${READFILE} | split -d -l ${LINESPERPART} --filter='gzip > $FILE.gz' - ${FILEPREFIX}
    #To be more general, we might want to add the -a argument to split
    #However, splitting into up to 99 parts should be more than enough
    #for most use cases

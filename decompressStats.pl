@@ -9,6 +9,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 ###############################################################################
 #                                                                             #
 # Version 1.1 (2018/11/22) Usable fraction for col. 4 (compatibility)         #
+# Version 1.2 (2020/01/10) Removed stat column argument, unused               #
 ###############################################################################
 
 #Add records for sites not output by other programs
@@ -16,7 +17,7 @@ Getopt::Long::Configure qw(gnu_getopt);
 #not output by divergenceFromMAF.pl
 
 my $SCRIPTNAME = "decompressStats.pl";
-my $VERSION = "1.1";
+my $VERSION = "1.2";
 
 =pod
 
@@ -32,7 +33,6 @@ decompressStats.pl [options]
   --help,-h,-?          Print this help documentation
   --input_stats,-i      Path to input stats file (default: STDIN)
   --fai,-f              Path to FASTA index for genome assembly
-  --stat_column,-s      Which column contains the statistic? (default: 3)
   --usable_fraction,-u  Output usable fraction instead of omit as col. 4
   --debug,-d            Output debugging information to STDERR
   --version,-v          Display the version string
@@ -41,12 +41,10 @@ decompressStats.pl [options]
 
 This script adds missing records to genome-wide per-site stats
 files output by other programs (following the 4-column format
-Scaffold ID, Position, Stat, Omit). Deviations from the 4-column
-format are permitted if you specify which column in the input
-contains the statistic of interest. Missing records are assumed
-to be requiring omission. This script is generally piped in
-between the other program and a windowing/summary program
-like nonOverlappingWindows.
+Scaffold ID, Position, Stat, Omit). Missing records are assumed
+to be NA, so we fill with 0s (and set the Omit column appropriately.
+This script is generally piped in between the other program and a
+windowing/summary program like nonOverlappingWindows.
 
 For example, given a 2L chromosome of length 15 and stats output as follows:
 
@@ -89,22 +87,15 @@ my $help = 0;
 my $man = 0;
 my $stats_path = "STDIN";
 my $fai_path = "";
-my $stat_column = 3;
 my $usable_fraction = 0;
 my $debug = 0;
 my $dispversion = 0;
-GetOptions('input_stats|i=s' => \$stats_path, 'fai|f=s' => \$fai_path, 'stat_column|s=i' => \$stat_column, 'usable_fraction|u' => \$usable_fraction, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
+GetOptions('input_stats|i=s' => \$stats_path, 'fai|f=s' => \$fai_path, 'usable_fraction|u' => \$usable_fraction, 'version|v' => \$dispversion, 'debug|d+' => \$debug, 'help|h|?+' => \$help, man => \$man) or pod2usage(2);
 pod2usage(-exitval => 1, -verbose => $help, -output => \*STDERR) if $help;
 pod2usage(-exitval => 0, -verbose => 2, -output => \*STDERR) if $man;
 
 print STDERR "${SCRIPTNAME} version ${VERSION}\n" if $dispversion;
 exit 0 if $dispversion;
-
-#Check that the stat column is not 1, 2, or 4:
-if ($stat_column == 1 or $stat_column == 2 or $stat_column == 4) {
-   print STDERR "Invalid choice for statistic column: ${stat_column}\n";
-   exit 5;
-}
 
 #Open the stats file, or set it up to be read from STDIN:
 print STDERR "Opening stats file\n" if $debug;
@@ -154,12 +145,6 @@ while (my $line = <$stats_fh>) {
    my $position = $stats_line[1];
    my $omit_position = $stats_line[3];
    my $num_columns = scalar(@stats_line);
-   if ($stat_column > $num_columns) {
-      print STDERR "Selected statistic column (${stat_column}) does not exist in the input ${stats_path}\n";
-      close($stats_fh);
-      exit 6;
-   }
-   my $stat_value = $stats_line[$stat_column-1];
    $empty_extra_columns = "\t0"x(${num_columns}-4);
    $used_scaffolds{$scaffold} = 1;
    if ($scaffold ne $prev_scaffold and $prev_scaffold ne "") {
