@@ -23,8 +23,11 @@ Getopt::Long::Configure qw(gnu_getopt);
 # calculateDxy or calculatePolymorphism (or listPolyDivSites)
 # using subsetVCFstats.pl.
 
+#Version 1.1 (2020/09/23) Fixed a Perl warning due to my improper
+#                         operator precedence choices
+
 my $SCRIPTNAME = "codingSitesByDegeneracy.pl";
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 
 =pod
 
@@ -121,13 +124,14 @@ for (my $i = 0; $i < $NUM_BASES**$CODON_LENGTH; $i++) {
 # out of any further processing.
 sub codon_to_int($) {
    my $codon = shift @_;
-   return 64 if $codon !~ /[ACGTacgt]+/;
+   return 64 if $codon !~ /^[ACGTacgt]+$/;
    my %nuc_to_int = ('A' => 0, 'C' => 1, 'G' => 2, 'T' => 3);
    my @nucs = split //, $codon;
    print STDERR "Invalid codon of length ", length($codon), "\n" unless length($codon) == 3;
    return 65 unless length($codon) == 3;
    my $codon_int = 0;
    for (my $i = 2; $i >= 0; $i--) {
+      print STDERR "Somehow a non-ACGT base snuck through: ", $nucs[$i], " at position ", $i, " of codon ${codon}\n" unless defined($nuc_to_int{uc($nucs[$i])});
       $codon_int += $nuc_to_int{uc($nucs[$i])} * 4 ** $i;
    }
    return $codon_int;
@@ -176,7 +180,7 @@ for my $CDS (keys %CDSes) {
    next unless $CDS_length % 3 == 0;
    for (my $i = 0; $i < $CDS_length; $i += 3) {
       my $codon = codon_to_int(substr($CDS_seq, $i, 3));
-      print STDERR "Unable to process codon in ${CDS} starting at position " . $i+1 . ", as it contains a non-ACGT base\n" if $codon < 0 or $codon > 63;
+      print STDERR "Unable to process codon in ${CDS} starting at position ",  ($i+1), ", as it contains a non-ACGT base\n" if $codon < 0 or $codon > 63;
       next if $codon < 0 or $codon > 63;
       for (my $j = 0; $j < scalar(@{$degen_positions[$codon]}); $j++) {
          #Debugging:
